@@ -1,0 +1,11 @@
+node_modules/
+.env
+dist/
+build/
+*.sqlite
+*.sqlite-journal
+.vscode/
+.idea/
+.DS_Store
+npm-debug.log*
+package-lock.json

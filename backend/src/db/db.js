@@ -2,7 +2,7 @@ require('dotenv').config();
 const { createClient } = require('@libsql/client');
 
 const url = process.env.DATABASE_URL;
-const authToken = process.env.DATABASE_TOKEN || process.env.AUTH_TOKEN;
+const authToken = process.env.TURSO_AUTH_TOKEN;
 
 if (!url) {
   throw new Error('DATABASE_URL is not defined in .env');
@@ -171,7 +171,7 @@ const initDb = async () => {
     const adminPassword = bcrypt.hashSync('admin123', 10);
     const managerPassword = bcrypt.hashSync('manager123', 10);
     const employeePassword = bcrypt.hashSync('employee123', 10);
-    
+
     console.log('Synchronizing initial data...');
     // Seed Departments first
     await db.execute("INSERT OR IGNORE INTO departments (name) VALUES ('Engineering')");

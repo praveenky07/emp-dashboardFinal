@@ -24,10 +24,11 @@ const LoginPage = () => {
       const from = location.state?.from?.pathname || '/';
       navigate(from, { replace: true });
     } catch (err) {
-      setError(err.response?.data?.message || 'Login failed. Please check your credentials.');
+      setError(err.response?.data?.error || err.response?.data?.message || 'Login failed. Please check your credentials.');
     } finally {
       setLoading(false);
     }
+
   };
 
   const setMock = (e, p) => {

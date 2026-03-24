@@ -11,5 +11,7 @@ router.get('/status', timeController.getSessionStatus);
 router.get('/stats', timeController.getEmployeeStats);
 router.get('/productivity', timeController.getProductivity);
 router.get('/work-hours', timeController.getWorkHours);
+router.post('/manual-override', timeController.manualOverride);
 
 module.exports = router;
+

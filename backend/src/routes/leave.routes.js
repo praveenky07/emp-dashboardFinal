@@ -4,8 +4,9 @@ const leaveController = require('../controllers/leave.controller');
 const { authorize } = require('../middleware/auth.middleware');
 
 router.post('/apply', leaveController.applyLeave);
-router.get('/my-leaves', leaveController.getLeaves);
-router.get('/all-pending', authorize(['Manager', 'Admin']), leaveController.getAllPendingLeaves);
-router.post('/update-status', authorize(['Manager', 'Admin']), leaveController.updateLeaveStatus);
+router.get('/my', leaveController.getLeaves);
+router.get('/team', authorize(['manager', 'admin']), leaveController.getTeamLeaves);
+router.get('/all-pending', authorize(['manager', 'admin']), leaveController.getAllPendingLeaves);
+router.post('/update-status', authorize(['manager', 'admin']), leaveController.updateLeaveStatus);
 
 module.exports = router;

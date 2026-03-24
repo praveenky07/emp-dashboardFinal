@@ -18,6 +18,8 @@ import {
   Zap as ZapIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import DetailModal from './DetailModal';
+import { Calendar as CalendarIcon, Mail, Shield, Briefcase as DeptIcon, Hash } from 'lucide-react';
 
 const Sidebar = ({ user, isOpen, setIsOpen }) => {
   const role = user.role?.toLowerCase() || '';
@@ -97,7 +99,7 @@ const Sidebar = ({ user, isOpen, setIsOpen }) => {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-black text-slate-900 truncate">{user.name}</p>
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{user.role}</p>
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{user.department || user.role}</p>
               </div>
             </div>
             <div className="flex items-center gap-2 px-3 py-1.5 bg-green-100/50 rounded-full w-fit">
@@ -150,11 +152,14 @@ const Topbar = ({ user, onLogout, toggleSidebar }) => {
         <div className="flex items-center gap-3">
           <div className="text-right hidden sm:block">
             <p className="text-sm font-black text-slate-900 leading-none">{user.name}</p>
-            <p className="text-[10px] font-bold text-slate-500 mt-1 uppercase tracking-wider leading-none">{user.role}</p>
+            <p className="text-[10px] font-bold text-slate-500 mt-1 uppercase tracking-wider leading-none">{user.department || user.role}</p>
           </div>
-          <div className="w-10 h-10 rounded-full bg-slate-100 border-2 border-white shadow-sm overflow-hidden flex items-center justify-center">
+          <button 
+            onClick={() => window.openProfile && window.openProfile()}
+            className="w-10 h-10 rounded-full bg-slate-100 border-2 border-white shadow-sm overflow-hidden flex items-center justify-center hover:scale-105 transition-all cursor-pointer"
+          >
              <User size={20} className="text-slate-400" />
-          </div>
+          </button>
           <button 
             onClick={onLogout}
             className="p-2.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
@@ -173,13 +178,15 @@ const Layout = ({ children }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
 
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
     if (storedUser) {
       setUser(JSON.parse(storedUser));
     }
-  }, [location.pathname]); // Update user on navigation
+    window.openProfile = () => setShowProfile(true);
+  }, [location.pathname]); 
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -197,6 +204,45 @@ const Layout = ({ children }) => {
         <main className="p-6 lg:p-10 max-w-[1600px] w-full mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
           {children}
         </main>
+
+        <DetailModal isOpen={showProfile} onClose={() => setShowProfile(false)} title="My Profile">
+          <div className="space-y-10">
+            <div className="flex flex-col items-center gap-6">
+              <div className="w-24 h-24 rounded-[32px] bg-indigo-100 flex items-center justify-center text-indigo-700 shadow-xl shadow-indigo-100 font-black text-4xl">
+                 {user.name ? user.name[0] : '?'}
+              </div>
+              <div className="text-center">
+                <h3 className="text-3xl font-black text-slate-900 leading-tight">{user.name}</h3>
+                <p className="text-slate-500 font-bold uppercase tracking-[0.2em] text-[11px] mt-1">{user.department || user.role}</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+               {[
+                 { label: 'Employee ID', value: user.employee_code || user.employee_id || 'Not Assigned', icon: Hash },
+                 { label: 'Work Email', value: user.email, icon: Mail },
+                 { label: 'Account Role', value: user.role, icon: Shield },
+                 { label: 'Department', value: user.department || 'General', icon: DeptIcon },
+                 { label: 'Join Date', value: user.created_at ? new Date(user.created_at).toLocaleDateString() : 'N/A', icon: CalendarIcon }
+               ].map((item, i) => (
+                 <div key={i} className="flex items-center gap-4 p-5 bg-slate-50 rounded-3xl border border-slate-100 hover:border-indigo-200 transition-all group">
+                    <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-slate-400 group-hover:bg-indigo-600 group-hover:text-white transition-all shadow-sm">
+                       <item.icon size={18} />
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1.5">{item.label}</p>
+                      <p className="text-sm font-black text-slate-800 break-all">{item.value}</p>
+                    </div>
+                 </div>
+               ))}
+            </div>
+
+            <div className="p-6 bg-indigo-50/50 rounded-3xl border border-indigo-100 flex items-center justify-center gap-3">
+               <Shield className="text-indigo-600" size={18}/>
+               <p className="text-[11px] font-bold text-indigo-700">Account verified and secured by EMP Systems</p>
+            </div>
+          </div>
+        </DetailModal>
       </div>
     </div>
   );

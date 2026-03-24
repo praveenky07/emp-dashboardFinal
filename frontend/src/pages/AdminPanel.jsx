@@ -27,7 +27,9 @@ import {
   Server,
   CloudLightning,
   CheckCircle,
-  Download
+  Download,
+  Building2,
+  Trash
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -40,23 +42,33 @@ const AdminPanel = () => {
     
     // UI state
     const [activeModal, setActiveModal] = useState(null); // 'addUser', 'usersList', 'sessions', 'storage', 'metrics'
-    const [newUser, setNewUser] = useState({ name: '', email: '', password: '', role: 'Employee' });
+    const [newUser, setNewUser] = useState({ name: '', email: '', password: '', role: 'Employee', department_id: '' });
+    const [departments, setDepartments] = useState([]);
+    const [deptToEdit, setDeptToEdit] = useState(null);
+    const [newDeptName, setNewDeptName] = useState('');
     const [backingUp, setBackingUp] = useState(false);
 
     const fetchData = async () => {
         try {
             setLoading(true);
-            const [usersRes, logsRes, settingsRes, sessionsRes] = await Promise.all([
+            const [usersRes, logsRes, settingsRes, sessionsRes, deptsRes] = await Promise.all([
                 api.get('/admin/users'),
                 api.get('/admin/logs'),
                 api.get('/admin/settings'),
-                api.get('/admin/active-sessions')
+                api.get('/admin/active-sessions'),
+                api.get('/departments')
             ]);
             
             setUsers(Array.isArray(usersRes?.data) ? usersRes.data : []);
             setLogs(Array.isArray(logsRes?.data) ? logsRes.data : []);
             setSettings(Array.isArray(settingsRes?.data) ? settingsRes.data : []);
             setActiveSessions(Array.isArray(sessionsRes?.data) ? sessionsRes.data : []);
+            setDepartments(Array.isArray(deptsRes?.data) ? deptsRes.data : []);
+            
+            // Set default department if none selected
+            if (deptsRes?.data?.length > 0 && !newUser.department_id) {
+                setNewUser(prev => ({ ...prev, department_id: deptsRes.data[0].id }));
+            }
         } catch (err) { 
             console.error('Failed to fetch admin data', err);
         } finally { 
@@ -73,9 +85,9 @@ const AdminPanel = () => {
         try {
             await api.post('/auth/register', newUser);
             setActiveModal(null);
-            setNewUser({ name: '', email: '', password: '', role: 'Employee' });
+            setNewUser({ name: '', email: '', password: '', role: 'Employee', department_id: departments[0]?.id || '' });
             fetchData();
-        } catch (err) { alert('Failed to create user') }
+        } catch (err) { alert(err.response?.data?.error || err.response?.data?.message || 'Failed to create user') }
     };
 
     const handleDeleteUser = async (id) => {
@@ -83,21 +95,21 @@ const AdminPanel = () => {
         try {
             await api.delete(`/admin/user/${id}`);
             fetchData();
-        } catch (err) { alert('Failed to delete user') }
+        } catch (err) { alert(err.response?.data?.error || err.response?.data?.message || 'Failed to delete user') }
     };
 
     const handleUpdateRole = async (id, role) => {
         try {
             await api.post('/admin/user-role', { id, role });
             fetchData();
-        } catch (err) { alert('Failed to update role') }
+        } catch (err) { alert(err.response?.data?.error || err.response?.data?.message || 'Failed to update role') }
     };
 
     const handleUpdateSetting = async (key, value) => {
         try {
             await api.post('/admin/settings', { key, value });
             fetchData();
-        } catch (err) { alert('Failed to update setting') }
+        } catch (err) { alert(err.response?.data?.error || err.response?.data?.message || 'Failed to update setting') }
     };
 
     const handleBackup = async () => {
@@ -105,8 +117,36 @@ const AdminPanel = () => {
             setBackingUp(true);
             const { data } = await api.post('/admin/backup');
             alert(data.message);
-        } catch (err) { alert('Backup failed') }
+        } catch (err) { alert(err.response?.data?.error || err.response?.data?.message || 'Backup failed') }
         finally { setBackingUp(false); }
+    };
+
+    const handleCreateDept = async (e) => {
+        e.preventDefault();
+        try {
+            await api.post('/departments', { name: newDeptName });
+            setNewDeptName('');
+            setActiveModal(null);
+            fetchData();
+        } catch (err) { alert(err.response?.data?.error || err.response?.data?.message || 'Failed to create department') }
+    };
+
+    const handleUpdateDept = async (e) => {
+        e.preventDefault();
+        try {
+            await api.put(`/departments/${deptToEdit.id}`, { name: deptToEdit.name });
+            setDeptToEdit(null);
+            setActiveModal(null);
+            fetchData();
+        } catch (err) { alert(err.response?.data?.error || err.response?.data?.message || 'Failed to update department') }
+    };
+
+    const handleDeleteDept = async (id) => {
+        if (!window.confirm('Are you sure you want to delete this department?')) return;
+        try {
+            await api.delete(`/departments/${id}`);
+            fetchData();
+        } catch (err) { alert(err.response?.data?.error || err.response?.data?.message || 'Failed to delete department') }
     };
 
     if (loading) return <div className="flex items-center justify-center min-h-[60vh]"><div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" /></div>;
@@ -127,6 +167,13 @@ const AdminPanel = () => {
                          {backingUp ? <div className="w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" /> : <Database size={18} />}
                          <span>Backup Data</span>
                     </button>
+                     <button 
+                        onClick={() => setActiveModal('deptMgmt')}
+                        className="px-6 py-3.5 bg-white border border-slate-100 rounded-2xl font-bold text-slate-600 hover:border-indigo-600 hover:text-indigo-600 transition-all shadow-sm flex items-center gap-2 cursor-pointer"
+                    >
+                         <Building2 size={18} />
+                         <span>Manage Depts</span>
+                    </button>
                     <button 
                         onClick={() => setActiveModal('addUser')}
                         className="px-6 py-3.5 bg-indigo-600 text-white rounded-2xl font-black hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 flex items-center gap-2 cursor-pointer"
@@ -141,7 +188,7 @@ const AdminPanel = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <AdminStatCard title="Total Users" value={users.length} icon={UsersIcon} color="bg-indigo-600" onClick={() => setActiveModal('usersList')} />
                 <AdminStatCard title="Active Sessions" value={activeSessions.length} icon={Activity} color="bg-emerald-600" onClick={() => setActiveModal('sessions')} />
-                <AdminStatCard title="Storage" value="84%" icon={Database} color="bg-blue-600" onClick={() => setActiveModal('storage')} />
+                <AdminStatCard title="Departments" value={departments.length} icon={Building2} color="bg-blue-600" onClick={() => setActiveModal('deptMgmt')} />
                 <AdminStatCard title="CPU Load" value="12%" icon={Cpu} color="bg-amber-600" onClick={() => setActiveModal('metrics')} />
             </div>
 
@@ -162,7 +209,7 @@ const AdminPanel = () => {
                                 <thead>
                                     <tr className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] border-b border-slate-50">
                                         <th className="pb-6 px-4">Member</th>
-                                        <th className="pb-6 px-4">Access Tier</th>
+                                        <th className="pb-6 px-4">Department</th>
                                         <th className="pb-6 px-4 text-right">Settings</th>
                                     </tr>
                                 </thead>
@@ -181,7 +228,7 @@ const AdminPanel = () => {
                                                 </div>
                                             </td>
                                             <td className="py-6 px-4">
-                                                 <span className={`px-3 py-1 bg-slate-100 rounded-full text-[9px] font-black uppercase tracking-widest text-slate-500 group-hover:bg-indigo-50 group-hover:text-indigo-700 transition-colors`}>{user.role}</span>
+                                                 <span className={`px-3 py-1 bg-slate-100 rounded-full text-[9px] font-black uppercase tracking-widest text-slate-500 group-hover:bg-indigo-50 group-hover:text-indigo-700 transition-colors`}>{user.department_name || (user.role === 'admin' ? 'SYSTEM' : 'PENDING')}</span>
                                             </td>
                                             <td className="py-6 px-4 text-right">
                                                 <button onClick={() => handleDeleteUser(user.id)} className="p-2.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"><Trash2 size={18} /></button>
@@ -255,7 +302,7 @@ const AdminPanel = () => {
                         <thead>
                             <tr className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-50">
                                 <th className="pb-6 px-4">Profile</th>
-                                <th className="pb-6 px-4">Role</th>
+                                <th className="pb-6 px-4">Dept / Role</th>
                                 <th className="pb-6 px-4">Created</th>
                                 <th className="pb-6 px-4 text-right">Actions</th>
                             </tr>
@@ -265,7 +312,7 @@ const AdminPanel = () => {
                                 <tr key={user.id} className="hover:bg-slate-50/80 transition-all">
                                     <td className="py-6 px-4">
                                         <div className="flex items-center gap-4">
-                                            <div className="w-12 h-12 rounded-2xl bg-indigo-50 flex items-center justify-center font-black text-indigo-600 shadow-sm">{user.name[0]}</div>
+                                            <div className="w-12 h-12 rounded-2xl bg-indigo-50 flex items-center justify-center font-black text-indigo-600 shadow-sm">{user.name ? user.name[0] : '?'}</div>
                                             <div>
                                                 <p className="font-black text-slate-900 text-sm whitespace-nowrap">{user.name}</p>
                                                 <p className="text-xs text-slate-400 font-medium">{user.email}</p>
@@ -273,15 +320,18 @@ const AdminPanel = () => {
                                         </div>
                                     </td>
                                     <td className="py-6 px-4">
-                                        <select 
-                                            value={user.role} 
-                                            onChange={(e) => handleUpdateRole(user.id, e.target.value)}
-                                            className="appearance-none bg-slate-100 border-none rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest focus:ring-2 focus:ring-indigo-600 transition-all outline-none"
-                                        >
-                                            <option>Employee</option>
-                                            <option>Manager</option>
-                                            <option>Admin</option>
-                                        </select>
+                                        <div className="flex flex-col gap-2">
+                                            <span className="text-[9px] font-black text-slate-400 uppercase">{user.department_name || 'No Dept'}</span>
+                                            <select 
+                                                value={user.role} 
+                                                onChange={(e) => handleUpdateRole(user.id, e.target.value)}
+                                                className="appearance-none bg-slate-100 border-none rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest focus:ring-2 focus:ring-indigo-600 transition-all outline-none"
+                                            >
+                                                <option>Employee</option>
+                                                <option>Manager</option>
+                                                <option>Admin</option>
+                                            </select>
+                                        </div>
                                     </td>
                                     <td className="py-6 px-4 text-xs font-black text-slate-400 uppercase">{new Date(user.created_at).toLocaleDateString()}</td>
                                     <td className="py-6 px-4 text-right">
@@ -300,11 +350,12 @@ const AdminPanel = () => {
                     {activeSessions.map(session => (
                         <div key={session.id} className="bg-slate-50 p-8 rounded-[40px] border border-slate-100 flex flex-col items-center text-center group hover:border-emerald-500 transition-all">
                              <div className="relative mb-6">
-                                <div className="w-20 h-20 bg-white rounded-[32px] flex items-center justify-center text-3xl font-black text-emerald-600 shadow-sm border-2 border-transparent group-hover:border-emerald-100 transition-all">{session.name[0]}</div>
+                                <div className="w-20 h-20 bg-white rounded-[32px] flex items-center justify-center text-3xl font-black text-emerald-600 shadow-sm border-2 border-transparent group-hover:border-emerald-100 transition-all">{session.name ? session.name[0] : '?'}</div>
                                 <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-emerald-500 rounded-full border-4 border-slate-50 animate-pulse" />
                              </div>
                              <h4 className="text-lg font-black text-slate-900 mb-1">{session.name}</h4>
-                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4">{session.role}</p>
+                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4">{session.department_name || session.role}</p>
+
                              <div className="flex items-center gap-2 px-4 py-2 bg-white rounded-2xl border border-slate-100">
                                  <Clock size={16} className="text-emerald-600" />
                                  <span className="text-xs font-black text-slate-700">{new Date(session.start_time).toLocaleTimeString()}</span>
@@ -341,6 +392,58 @@ const AdminPanel = () => {
                                 <p className="text-xl font-black">14ms</p>
                              </div>
                         </div>
+                    </div>
+                </div>
+            </DetailModal>
+
+            {/* Department Management Modal */}
+            <DetailModal isOpen={activeModal === 'deptMgmt'} onClose={() => setActiveModal(null)} title="Department Infrastructure">
+                <div className="space-y-8">
+                    <form onSubmit={handleCreateDept} className="p-8 bg-slate-50 rounded-[40px] border border-slate-100">
+                        <h4 className="text-sm font-black text-slate-900 mb-6 uppercase tracking-widest">Register New Department</h4>
+                        <div className="flex gap-4">
+                            <input 
+                                required 
+                                value={newDeptName}
+                                onChange={e => setNewDeptName(e.target.value)}
+                                className="flex-1 p-4.5 bg-white border-2 border-transparent rounded-2xl font-bold focus:border-indigo-600 outline-none shadow-sm"
+                                placeholder="e.g. Cybersecurity, R&D"
+                            />
+                            <button type="submit" className="px-8 py-4.5 bg-indigo-600 text-white rounded-2xl font-black hover:bg-slate-900 transition-all shadow-lg flex items-center justify-center gap-2">
+                                <Plus size={18} />
+                                <span>Add</span>
+                            </button>
+                        </div>
+                    </form>
+
+                    <div className="grid grid-cols-1 gap-4">
+                        {departments.map(dept => (
+                            <div key={dept.id} className="p-6 bg-white border border-slate-100 rounded-3xl flex items-center justify-between group hover:border-indigo-600 transition-all">
+                                {deptToEdit?.id === dept.id ? (
+                                    <form onSubmit={handleUpdateDept} className="flex-1 flex gap-4 mr-4">
+                                        <input 
+                                            autoFocus
+                                            value={deptToEdit.name}
+                                            onChange={e => setDeptToEdit({...deptToEdit, name: e.target.value})}
+                                            className="flex-1 p-2 bg-slate-50 border-b-2 border-indigo-600 outline-none font-bold"
+                                        />
+                                        <button type="submit" className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg"><CheckCircle size={20} /></button>
+                                        <button type="button" onClick={() => setDeptToEdit(null)} className="p-2 text-slate-400 hover:bg-slate-50 rounded-lg"><LogOut size={20} /></button>
+                                    </form>
+                                ) : (
+                                    <>
+                                        <div>
+                                            <p className="font-black text-slate-900">{dept.name}</p>
+                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">ID: {dept.id}</p>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <button onClick={() => setDeptToEdit(dept)} className="p-2.5 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"><Edit3 size={18} /></button>
+                                            <button onClick={() => handleDeleteDept(dept.id)} className="p-2.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"><Trash2 size={18} /></button>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        ))}
                     </div>
                 </div>
             </DetailModal>
@@ -386,11 +489,25 @@ const AdminPanel = () => {
                          <div className="space-y-1.5 md:col-span-2">
                              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Permissions Tier</label>
                              <select value={newUser.role} onChange={e => setNewUser({...newUser, role: e.target.value})} className="w-full p-4.5 bg-slate-50 border-2 border-transparent rounded-2xl font-black uppercase tracking-widest focus:border-indigo-600 outline-none">
-                                <option>Employee</option>
-                                <option>Manager</option>
-                                <option>Admin</option>
+                                <option value="Employee">Employee</option>
+                                <option value="Manager">Manager</option>
+                                <option value="Admin">Admin</option>
                              </select>
-                        </div>
+                         </div>
+                         <div className="space-y-1.5 md:col-span-2">
+                              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Assigned Department</label>
+                              <select 
+                                value={newUser.department_id} 
+                                onChange={e => setNewUser({...newUser, department_id: e.target.value})} 
+                                className="w-full p-4.5 bg-slate-50 border-2 border-transparent rounded-2xl font-black uppercase tracking-widest focus:border-indigo-600 outline-none"
+                                required
+                              >
+                                 <option value="" disabled>Select Department</option>
+                                 {departments.map(dept => (
+                                     <option key={dept.id} value={dept.id}>{dept.name}</option>
+                                 ))}
+                              </select>
+                         </div>
                     </div>
                     <button type="submit" className="w-full bg-indigo-600 text-white p-5 rounded-3xl font-black hover:bg-slate-900 transition-all shadow-xl shadow-indigo-100 flex items-center justify-center gap-3 group">
                         Confirm Provisioning
@@ -398,7 +515,6 @@ const AdminPanel = () => {
                     </button>
                 </form>
             </DetailModal>
-
         </div>
     );
 };

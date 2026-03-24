@@ -6,6 +6,7 @@ import ManagerDashboard from './pages/ManagerDashboard';
 import AdminPanel from './pages/AdminPanel';
 import LeaveTracker from './pages/LeaveTracker';
 import Layout from './components/Layout';
+import ErrorBoundary from './components/ErrorBoundary';
 
 import { AnimatePresence } from 'framer-motion';
 
@@ -38,55 +39,57 @@ const RoleBasedRedirect = () => {
 function App() {
   return (
     <Router>
-      <AnimatePresence mode="wait">
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          
-          <Route path="/" element={
-            <ProtectedRoute>
-              <Layout>
-                <RoleBasedRedirect />
-              </Layout>
-            </ProtectedRoute>
-          } />
+      <ErrorBoundary>
+        <AnimatePresence mode="wait">
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            
+            <Route path="/" element={
+              <ProtectedRoute>
+                <Layout>
+                  <RoleBasedRedirect />
+                </Layout>
+              </ProtectedRoute>
+            } />
 
-          <Route path="/dashboard" element={
-            <ProtectedRoute allowedRoles={['employee', 'manager', 'admin']}>
-              <Layout>
-                <EmployeeDashboard />
-              </Layout>
-            </ProtectedRoute>
-          } />
+            <Route path="/dashboard" element={
+              <ProtectedRoute allowedRoles={['employee', 'manager', 'admin']}>
+                <Layout>
+                  <EmployeeDashboard />
+                </Layout>
+              </ProtectedRoute>
+            } />
 
-          <Route path="/manager" element={
-            <ProtectedRoute allowedRoles={['manager', 'admin']}>
-              <Layout>
-                <ManagerDashboard />
-              </Layout>
-            </ProtectedRoute>
-          } />
+            <Route path="/manager" element={
+              <ProtectedRoute allowedRoles={['manager', 'admin']}>
+                <Layout>
+                  <ManagerDashboard />
+                </Layout>
+              </ProtectedRoute>
+            } />
 
-          <Route path="/admin" element={
-            <ProtectedRoute allowedRoles={['admin']}>
-              <Layout>
-                <AdminPanel />
-              </Layout>
-            </ProtectedRoute>
-          } />
+            <Route path="/admin" element={
+              <ProtectedRoute allowedRoles={['admin']}>
+                <Layout>
+                  <AdminPanel />
+                </Layout>
+              </ProtectedRoute>
+            } />
 
-          <Route path="/leave" element={
-            <ProtectedRoute allowedRoles={['employee', 'manager', 'admin']}>
-              <Layout>
-                <LeaveTracker />
-              </Layout>
-            </ProtectedRoute>
-          } />
+            <Route path="/leave" element={
+              <ProtectedRoute allowedRoles={['employee', 'manager', 'admin']}>
+                <Layout>
+                  <LeaveTracker />
+                </Layout>
+              </ProtectedRoute>
+            } />
 
-          
-          {/* Default catch-all */}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </AnimatePresence>
+            
+            {/* Default catch-all */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </AnimatePresence>
+      </ErrorBoundary>
     </Router>
   );
 }

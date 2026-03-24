@@ -22,7 +22,7 @@ const LeaveTracker = () => {
 
     const fetchLeaves = async () => {
         try {
-            const { data } = await api.get('/leave/my-leaves');
+            const { data } = await api.get('/leave/my');
             setLeaves(data);
         } catch (error) {
             console.error('Error fetching leaves', error);

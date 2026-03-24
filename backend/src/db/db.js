@@ -21,6 +21,22 @@ const bcrypt = require('bcrypt');
 // Initialize tables if they don't exist
 const initDb = async () => {
   try {
+    // Drop old tables to ensure fresh schema during refactor (Be careful in production!)
+    await db.execute(`DROP TABLE IF EXISTS employees`);
+    await db.execute(`DROP TABLE IF EXISTS departments`);
+    await db.execute(`DROP TABLE IF EXISTS attendance`);
+    await db.execute(`DROP TABLE IF EXISTS breaks`);
+    await db.execute(`DROP TABLE IF EXISTS meetings`);
+    await db.execute(`DROP TABLE IF EXISTS leaves`);
+    await db.execute(`DROP TABLE IF EXISTS project_assignments`);
+    await db.execute(`DROP TABLE IF EXISTS projects`);
+    await db.execute(`DROP TABLE IF EXISTS users`);
+    await db.execute(`DROP TABLE IF EXISTS teams`);
+    await db.execute(`DROP TABLE IF EXISTS activity_logs`);
+    await db.execute(`DROP TABLE IF EXISTS system_settings`);
+    await db.execute(`DROP TABLE IF EXISTS work_sessions`); // Cleanup old table
+    await db.execute(`DROP TABLE IF EXISTS leave_requests`); // Cleanup old table
+
     // Create Tables
     await db.execute(`
       CREATE TABLE IF NOT EXISTS teams (
@@ -44,23 +60,43 @@ const initDb = async () => {
     `);
 
     await db.execute(`
-      CREATE TABLE IF NOT EXISTS work_sessions (
+      CREATE TABLE IF NOT EXISTS departments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT UNIQUE NOT NULL
+      )
+    `);
+
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS employees (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL,
-        start_time DATETIME NOT NULL,
-        end_time DATETIME,
-        total_duration INTEGER DEFAULT 0
+        name TEXT NOT NULL,
+        role TEXT NOT NULL,
+        department_id INTEGER NOT NULL,
+        employee_code TEXT UNIQUE,
+        FOREIGN KEY (user_id) REFERENCES users(id),
+        FOREIGN KEY (department_id) REFERENCES departments(id)
+      )
+    `);
+
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS attendance (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        login_time DATETIME NOT NULL,
+        logout_time DATETIME,
+        FOREIGN KEY (user_id) REFERENCES users(id)
       )
     `);
 
     await db.execute(`
       CREATE TABLE IF NOT EXISTS breaks (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        session_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
         type TEXT NOT NULL,
         start_time DATETIME NOT NULL,
         end_time DATETIME,
-        duration INTEGER DEFAULT 0
+        FOREIGN KEY (user_id) REFERENCES users(id)
       )
     `);
 
@@ -71,19 +107,21 @@ const initDb = async () => {
         title TEXT NOT NULL,
         duration INTEGER NOT NULL,
         type TEXT NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id)
       )
     `);
 
     await db.execute(`
       CREATE TABLE IF NOT EXISTS leave_requests (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
+        employee_id INTEGER NOT NULL,
         start_date TEXT NOT NULL,
         end_date TEXT NOT NULL,
-        reason TEXT NOT NULL,
+        reason TEXT,
         status TEXT CHECK(status IN ('Pending', 'Approved', 'Rejected')) DEFAULT 'Pending',
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (employee_id) REFERENCES users(id)
       )
     `);
 
@@ -91,17 +129,6 @@ const initDb = async () => {
       CREATE TABLE IF NOT EXISTS system_settings (
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL
-      )
-    `);
-
-    await db.execute(`
-      CREATE TABLE IF NOT EXISTS projects (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        team_id INTEGER NOT NULL,
-        status TEXT CHECK(status IN ('On Track', 'At Risk', 'Delayed', 'Urgent')) DEFAULT 'On Track',
-        progress INTEGER DEFAULT 0,
-        deadline TEXT NOT NULL
       )
     `);
 
@@ -115,23 +142,26 @@ const initDb = async () => {
       )
     `);
 
-    // Added as per user request
     await db.execute(`
-      CREATE TABLE IF NOT EXISTS employees (
+      CREATE TABLE IF NOT EXISTS projects (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
-        role TEXT NOT NULL,
-        department TEXT NOT NULL
+        description TEXT,
+        deadline DATETIME,
+        created_by INTEGER NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (created_by) REFERENCES users(id)
       )
     `);
 
     await db.execute(`
-      CREATE TABLE IF NOT EXISTS attendance (
+      CREATE TABLE IF NOT EXISTS project_assignments (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id INTEGER NOT NULL,
         employee_id INTEGER NOT NULL,
-        date TEXT NOT NULL,
-        status TEXT CHECK(status IN ('Present', 'Absent', 'Late')) DEFAULT 'Present',
-        FOREIGN KEY (employee_id) REFERENCES employees(id)
+        assigned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (project_id) REFERENCES projects(id),
+        FOREIGN KEY (employee_id) REFERENCES users(id)
       )
     `);
 
@@ -143,15 +173,29 @@ const initDb = async () => {
     const employeePassword = bcrypt.hashSync('employee123', 10);
     
     console.log('Synchronizing initial data...');
+    // Seed Departments first
+    await db.execute("INSERT OR IGNORE INTO departments (name) VALUES ('Engineering')");
+    await db.execute("INSERT OR IGNORE INTO departments (name) VALUES ('HR')");
+    await db.execute("INSERT OR IGNORE INTO departments (name) VALUES ('Sales')");
+    await db.execute("INSERT OR IGNORE INTO departments (name) VALUES ('Marketing')");
+
+    // Seed initial users properly with departments
+    await db.execute({ sql: 'INSERT INTO users (id, name, email, password, role, productivity_score) VALUES (?, ?, ?, ?, ?, ?)', args: [1, 'Admin User', 'admin@emp.com', adminPassword, 'admin', 98] });
+    await db.execute({ sql: 'INSERT INTO users (id, name, email, password, role, productivity_score) VALUES (?, ?, ?, ?, ?, ?)', args: [2, 'Manager One', 'manager@emp.com', managerPassword, 'manager', 95] });
+    await db.execute({ sql: 'INSERT INTO users (id, name, email, password, role, productivity_score) VALUES (?, ?, ?, ?, ?, ?)', args: [3, 'Employee One', 'employee@emp.com', employeePassword, 'employee', 92] });
+    await db.execute({ sql: 'INSERT INTO users (id, name, email, password, role, productivity_score) VALUES (?, ?, ?, ?, ?, ?)', args: [4, 'John Employee', 'john@emp.com', employeePassword, 'employee', 92] });
+
+    // Seed employees records to map users to departments
+    await db.execute({ sql: 'INSERT INTO employees (user_id, name, role, department_id, employee_code) VALUES (?, ?, ?, ?, ?)', args: [1, 'Admin User', 'admin', 1, 'EMP001'] }); // Engineering
+    await db.execute({ sql: 'INSERT INTO employees (user_id, name, role, department_id, employee_code) VALUES (?, ?, ?, ?, ?)', args: [2, 'Manager One', 'manager', 1, 'EMP002'] }); // Engineering
+    await db.execute({ sql: 'INSERT INTO employees (user_id, name, role, department_id, employee_code) VALUES (?, ?, ?, ?, ?)', args: [3, 'Employee One', 'employee', 2, 'EMP003'] }); // HR
+    await db.execute({ sql: 'INSERT INTO employees (user_id, name, role, department_id, employee_code) VALUES (?, ?, ?, ?, ?)', args: [4, 'John Employee', 'employee', 1, 'EMP004'] }); // Engineering
+
     await db.batch([
       { sql: 'INSERT OR IGNORE INTO teams (id, name, overall_productivity) VALUES (?, ?, ?)', args: [1, 'Frontend Squad', 94] },
       { sql: 'INSERT OR IGNORE INTO teams (id, name, overall_productivity) VALUES (?, ?, ?)', args: [2, 'Backend Core', 88] },
-      { sql: 'INSERT OR IGNORE INTO users (name, email, password, role, productivity_score) VALUES (?, ?, ?, ?, ?)', args: ['Admin User', 'admin@emp.com', adminPassword, 'admin', 98] },
-      { sql: 'INSERT OR IGNORE INTO users (name, email, password, role, productivity_score) VALUES (?, ?, ?, ?, ?)', args: ['Manager One', 'manager@emp.com', managerPassword, 'manager', 95] },
-      { sql: 'INSERT OR IGNORE INTO users (name, email, password, role, productivity_score) VALUES (?, ?, ?, ?, ?)', args: ['Employee One', 'employee@emp.com', employeePassword, 'employee', 92] },
-      { sql: 'INSERT OR IGNORE INTO users (name, email, password, role, productivity_score) VALUES (?, ?, ?, ?, ?)', args: ['John Employee', 'john@emp.com', employeePassword, 'employee', 92] },
       { sql: 'INSERT OR IGNORE INTO system_settings (key, value) VALUES (?, ?)', args: ['break_limit_mins', '60'] },
-      { sql: 'INSERT OR IGNORE INTO system_settings (key, value) VALUES (?, ?)', args: ['productivity_formula', 'work_hours / (work_hours + break_hours)'] }
+      { sql: 'INSERT OR IGNORE INTO system_settings (key, value) VALUES (?, ?)', args: ['productivity_formula', 'work_hours - (breaks + meetings)'] }
     ], "write");
     console.log('Turso Database sync complete.');
 
@@ -159,6 +203,7 @@ const initDb = async () => {
     console.error('Error during Turso Database initialization:', error.message);
   }
 };
+
 
 initDb();
 

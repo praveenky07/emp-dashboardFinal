@@ -18,7 +18,8 @@ import {
   ArrowUpRight,
   Loader2,
   CalendarDays,
-  Timer
+  Timer,
+  Briefcase
 } from 'lucide-react';
 import { 
   AreaChart, 
@@ -43,7 +44,9 @@ const EmployeeDashboard = () => {
         breaksList: [] 
     });
     const [productivity, setProductivity] = useState({ score: 94, work: 0, breaks: 0 });
+    const [override, setOverride] = useState({ type: 'attendance', startTime: '', endTime: '', reason: '' });
     const [workLogs, setWorkLogs] = useState([]);
+    const [assignedProjects, setAssignedProjects] = useState([]);
     
     // UI state
     const [meetings, setMeetings] = useState({ title: '', duration: '', type: 'Internal' });
@@ -52,17 +55,37 @@ const EmployeeDashboard = () => {
     
     // Modal states
     const [activeModal, setActiveModal] = useState(null); // 'meeting', 'leave', 'productivity', 'workHours', 'breaks', 'meetingsList'
+    const [leaves, setLeaves] = useState([]);
 
     const fetchData = async () => {
         try {
-            const [statusRes, statsRes, prodRes] = await Promise.all([
+            const [statusRes, statsRes, prodRes, leavesRes] = await Promise.all([
                 api.get('/time/status'),
                 api.get('/time/stats'),
-                api.get('/time/productivity')
+                api.get('/time/productivity'),
+                api.get('/leave/my')
             ]);
             setStatus(statusRes.data);
             setStats(statsRes.data);
-            setProductivity(prodRes.data);
+            setLeaves(leavesRes.data || []);
+            
+            const pData = prodRes.data || {};
+            const totalWork = pData.totalWorkTime || 0;
+            const totalBreaks = pData.totalBreakTime || 0;
+            const totalMeetings = pData.totalMeetingTime || 0;
+            
+            // Calculate percentage safely
+            const totalTime = totalWork + totalBreaks + totalMeetings;
+            const scorePercent = totalTime > 0 
+                ? Math.round((totalWork / totalTime) * 100) 
+                : 0;
+
+            setProductivity({
+                work: totalWork,
+                breaks: totalBreaks,
+                score: scorePercent
+            });
+            fetchAssignedProjects();
             
             if (statusRes.data.active && statusRes.data.startTime) {
                 const start = new Date(statusRes.data.startTime);
@@ -72,6 +95,13 @@ const EmployeeDashboard = () => {
         } catch (e) {
             console.error('Error fetching dashboard data', e);
         }
+    };
+
+    const fetchAssignedProjects = async () => {
+        try {
+            const { data } = await api.get('/projects');
+            setAssignedProjects(data);
+        } catch (error) { console.error('Error fetching assigned projects', error); }
     };
 
     useEffect(() => {
@@ -88,10 +118,34 @@ const EmployeeDashboard = () => {
         return () => clearInterval(interval);
     }, [status.active, status.onBreak]);
 
+    // Idle detection
+    useEffect(() => {
+        let idleTimer;
+        const resetTimer = () => {
+            clearTimeout(idleTimer);
+            idleTimer = setTimeout(() => {
+                if (status.active && !status.onBreak) {
+                    setActiveModal('idle');
+                }
+            }, 600000); // 10 minutes
+        };
+
+        window.addEventListener('mousemove', resetTimer);
+        window.addEventListener('keypress', resetTimer);
+        resetTimer();
+
+        return () => {
+            window.removeEventListener('mousemove', resetTimer);
+            window.removeEventListener('keypress', resetTimer);
+            clearTimeout(idleTimer);
+        };
+    }, [status.active, status.onBreak]);
+
     const formatTime = (seconds) => {
-        const h = Math.floor(seconds / 3600);
-        const m = Math.floor((seconds % 3600) / 60);
-        const s = seconds % 60;
+        const safeSeconds = Math.max(0, parseInt(seconds) || 0);
+        const h = Math.floor(safeSeconds / 3600);
+        const m = Math.floor((safeSeconds % 3600) / 60);
+        const s = safeSeconds % 60;
         return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
     };
 
@@ -102,7 +156,7 @@ const EmployeeDashboard = () => {
             setStatus(prev => ({ ...prev, active: true, sessionId: data.sessionId, startTime: new Date().toISOString() }));
             setTimer(0);
             fetchData();
-        } catch (error) { alert(error.response?.data?.message || 'Error starting work'); }
+        } catch (error) { alert(error.response?.data?.error || error.response?.data?.message || 'Error starting work'); }
         finally { setLoading(false); }
     };
 
@@ -113,23 +167,33 @@ const EmployeeDashboard = () => {
             setStatus({ active: false, onBreak: false });
             setTimer(0);
             fetchData();
-        } catch (error) { alert(error.response?.data?.message || 'Error stopping work'); }
+        } catch (error) { alert(error.response?.data?.error || error.response?.data?.message || 'Error stopping work'); }
         finally { setLoading(false); }
     };
 
-    const handleToggleBreak = async () => {
+    const handleToggleBreak = async (type = 'Short Break') => {
         try {
             setLoading(true);
             if (status.onBreak) {
                 await api.post('/time/stop-break');
                 setStatus(prev => ({ ...prev, onBreak: false }));
             } else {
-                await api.post('/time/start-break', { type: 'Short Break' });
-                setStatus(prev => ({ ...prev, onBreak: true }));
+                await api.post('/time/start-break', { type });
+                setStatus(prev => ({ ...prev, onBreak: true, breakType: type }));
             }
             fetchData();
-        } catch (error) { alert(error.response?.data?.message || 'Error toggling break'); }
+        } catch (error) { alert(error.response?.data?.error || error.response?.data?.message || 'Error toggling break'); }
         finally { setLoading(false); }
+    };
+
+    const handleManualOverride = async (e) => {
+        e.preventDefault();
+        try {
+            await api.post('/time/manual-override', override);
+            setActiveModal(null);
+            setOverride({ type: 'attendance', startTime: '', endTime: '', reason: '' });
+            fetchData();
+        } catch (error) { alert(error.response?.data?.error || error.response?.data?.message || 'Error logging manual override'); }
     };
 
     const handleLogMeeting = async (e) => {
@@ -139,7 +203,7 @@ const EmployeeDashboard = () => {
             setActiveModal(null);
             setMeetings({ title: '', duration: '', type: 'Internal' });
             fetchData();
-        } catch (error) { alert(error.response?.data?.message || 'Error logging meeting'); }
+        } catch (error) { alert(error.response?.data?.error || error.response?.data?.message || 'Error logging meeting'); }
     };
 
     const handleApplyLeave = async (e) => {
@@ -148,7 +212,7 @@ const EmployeeDashboard = () => {
             await api.post('/leave/apply', leave);
             setActiveModal(null);
             setLeave({ startDate: '', endDate: '', reason: '' });
-        } catch (error) { alert(error.response?.data?.message || 'Error applying leave'); }
+        } catch (error) { alert(error.response?.data?.error || error.response?.data?.message || 'Error applying leave'); }
     };
 
     const fetchWorkLogs = async () => {
@@ -186,7 +250,7 @@ const EmployeeDashboard = () => {
                         </div>
 
                         <div className="flex flex-wrap justify-center gap-5 w-full max-w-lg">
-                            {!status.active ? (
+                             {!status.active ? (
                                 <button 
                                     onClick={handleStartWork}
                                     disabled={loading}
@@ -198,19 +262,21 @@ const EmployeeDashboard = () => {
                                 </button>
                             ) : (
                                 <>
-                                    <button 
-                                        onClick={handleToggleBreak}
-                                        disabled={loading}
-                                        className={`flex-1 min-w-[180px] py-5 px-8 rounded-3xl font-black active:scale-95 transition-all flex items-center justify-center gap-3 border-2 
-                                            ${status.onBreak 
-                                                ? 'bg-emerald-600 border-emerald-600 text-white shadow-xl shadow-emerald-100' 
-                                                : 'bg-white border-slate-100 text-slate-700 hover:border-indigo-200 hover:bg-indigo-50/30'
-                                            }
-                                        `}
-                                    >
-                                        <Coffee size={20} />
-                                        <span className="text-lg">{status.onBreak ? 'Back to Work' : 'Take Break'}</span>
-                                    </button>
+                                    <div className="flex flex-col gap-2 flex-1 min-w-[200px]">
+                                        <button 
+                                            onClick={() => status.onBreak ? handleToggleBreak() : setActiveModal('breakType')}
+                                            disabled={loading}
+                                            className={`w-full py-5 px-8 rounded-3xl font-black active:scale-95 transition-all flex items-center justify-center gap-3 border-2 
+                                                ${status.onBreak 
+                                                    ? 'bg-emerald-600 border-emerald-600 text-white shadow-xl shadow-emerald-100' 
+                                                    : 'bg-white border-slate-100 text-slate-700 hover:border-indigo-200 hover:bg-indigo-50/30'
+                                                }
+                                            `}
+                                        >
+                                            <Coffee size={20} />
+                                            <span className="text-lg">{status.onBreak ? `End ${status.breakType || 'Break'}` : 'Start Break'}</span>
+                                        </button>
+                                    </div>
                                     <button 
                                         onClick={handleStopWork}
                                         disabled={loading}
@@ -292,6 +358,19 @@ const EmployeeDashboard = () => {
                     onClick={() => setActiveModal('meetingsList')}
                 />
                 <button 
+                    onClick={() => setActiveModal('override')}
+                    className="p-6 bg-white rounded-3xl border border-slate-100 shadow-md shadow-slate-200/40 flex items-center gap-4 hover:border-orange-600 transition-all group cursor-pointer"
+                >
+                    <div className="w-14 h-14 bg-orange-50 rounded-2xl flex items-center justify-center text-orange-600 group-hover:bg-orange-600 group-hover:text-white transition-colors">
+                        <Timer size={28} />
+                    </div>
+                    <div>
+                        <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest leading-none mb-1">Tools</p>
+                        <p className="text-lg font-black text-slate-900">Manual Override</p>
+                    </div>
+                    <ArrowUpRight size={20} className="ml-auto text-slate-200 group-hover:text-orange-600" />
+                </button>
+                <button 
                     onClick={() => setActiveModal('leave')}
                     className="p-6 bg-white rounded-3xl border border-slate-100 shadow-md shadow-slate-200/40 flex items-center gap-4 hover:border-purple-600 transition-all group cursor-pointer"
                 >
@@ -353,9 +432,98 @@ const EmployeeDashboard = () => {
                 </div>
             </div>
 
+            {/* Assigned Projects Section */}
+            <div className="bg-white p-10 rounded-[40px] border border-slate-100 shadow-xl shadow-slate-200/50">
+                <div className="flex items-center justify-between mb-8">
+                    <div>
+                        <h2 className="text-2xl font-black text-slate-900 tracking-tight">Your Assigned Projects</h2>
+                        <p className="text-slate-400 text-sm font-medium">Ongoing tasks and project deadlines</p>
+                    </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                    {assignedProjects.length === 0 ? (
+                        <div className="col-span-full py-12 text-center bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200 opacity-50">
+                            <p className="font-black uppercase tracking-widest text-xs">No active assignments</p>
+                        </div>
+                    ) : (
+                        assignedProjects.map(project => (
+                            <div key={project.id} className="p-6 rounded-3xl bg-slate-50 border border-slate-100 hover:border-indigo-200 transition-all group">
+                                <div className="flex justify-between items-start mb-4">
+                                    <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-indigo-600 shadow-sm border border-slate-50">
+                                        <Briefcase size={20} />
+                                    </div>
+                                    <div className="flex items-center gap-1.5 px-3 py-1 bg-white border border-slate-100 rounded-full text-[9px] font-black text-slate-500 uppercase tracking-widest">
+                                        <Calendar size={10} className="text-indigo-600" />
+                                        {project.deadline ? new Date(project.deadline).toLocaleDateString() : 'No deadline'}
+                                    </div>
+                                </div>
+                                <h4 className="text-lg font-black text-slate-900 mb-1 group-hover:text-indigo-600 transition-colors">{project.name}</h4>
+                                <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed">{project.description}</p>
+                                <div className="mt-6 pt-4 border-t border-slate-200/60 flex items-center justify-between">
+                                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Status: Active</span>
+                                     <ArrowUpRight size={14} className="text-slate-300 group-hover:text-indigo-600 transition-colors" />
+                                </div>
+                            </div>
+                        ))
+                    )}
+                </div>
+            </div>
+
             {/* --- Modals Section --- */}
 
-            {/* Productivity Detail */}
+            {/* Leave History Section */}
+            <div className="bg-white rounded-[40px] border border-slate-100 shadow-xl shadow-slate-200/50 overflow-hidden">
+                <div className="p-8 border-b border-slate-50 flex items-center justify-between">
+                    <div>
+                        <h2 className="text-2xl font-black text-slate-900 tracking-tight">Leave History</h2>
+                        <p className="text-slate-500 text-sm font-medium">Track your time-off applications</p>
+                    </div>
+                </div>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                        <thead>
+                            <tr className="bg-slate-50/50">
+                                <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Date</th>
+                                <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Period</th>
+                                <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Reason</th>
+                                <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-50">
+                            {leaves.length > 0 ? leaves.map((lv, i) => (
+                                <tr key={lv.id || i} className="hover:bg-slate-50/50 transition-colors">
+                                    <td className="px-8 py-5">
+                                        <p className="text-sm font-bold text-slate-900">{new Date(lv.created_at).toLocaleDateString()}</p>
+                                    </td>
+                                    <td className="px-8 py-5">
+                                        <div className="flex items-center gap-2 text-sm font-black text-slate-700">
+                                            <span>{lv.start_date}</span>
+                                            <span className="text-slate-300">→</span>
+                                            <span>{lv.end_date}</span>
+                                        </div>
+                                    </td>
+                                    <td className="px-8 py-5">
+                                        <p className="text-sm font-medium text-slate-500 truncate max-w-xs">{lv.reason}</p>
+                                    </td>
+                                    <td className="px-8 py-5">
+                                        <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border ${
+                                            lv.status === 'Approved' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
+                                            lv.status === 'Rejected' ? 'bg-red-50 text-red-700 border-red-100' :
+                                            'bg-amber-50 text-amber-700 border-amber-100'
+                                        }`}>
+                                            {lv.status}
+                                        </span>
+                                    </td>
+                                </tr>
+                            )) : (
+                                <tr>
+                                    <td colSpan="4" className="px-8 py-10 text-center text-slate-400 font-bold uppercase tracking-widest">No history found</td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
             <DetailModal isOpen={activeModal === 'productivity'} onClose={() => setActiveModal(null)} title="Productivity Breakdown">
                 <div className="space-y-8">
                     <div className="grid grid-cols-3 gap-6">
@@ -490,6 +658,71 @@ const EmployeeDashboard = () => {
                         <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
                     </button>
                 </form>
+            </DetailModal>
+
+            {/* Break Type selection */}
+            <DetailModal isOpen={activeModal === 'breakType'} onClose={() => setActiveModal(null)} title="Select Break Category">
+                <div className="grid grid-cols-1 gap-4">
+                    {['Lunch', 'Tea', 'Other'].map(type => (
+                        <button 
+                            key={type}
+                            onClick={() => {
+                                handleToggleBreak(type);
+                                setActiveModal(null);
+                            }}
+                            className="p-6 bg-slate-50 border-2 border-transparent rounded-3xl font-black text-slate-700 hover:border-indigo-600 hover:bg-white transition-all text-left flex items-center justify-between group"
+                        >
+                            <span>{type} Break</span>
+                            <ArrowRight size={20} className="text-slate-200 group-hover:text-indigo-600 transition-colors" />
+                        </button>
+                    ))}
+                </div>
+            </DetailModal>
+
+            {/* Manual Override Form */}
+            <DetailModal isOpen={activeModal === 'override'} onClose={() => setActiveModal(null)} title="Manual Time Override">
+                <form onSubmit={handleManualOverride} className="space-y-6">
+                    <div className="space-y-1.5 font-bold">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Entry Type</label>
+                        <select value={override.type} onChange={e => setOverride({...override, type: e.target.value})} className="w-full p-4 bg-slate-50 border-2 border-transparent rounded-2xl outline-none focus:border-indigo-600">
+                            <option value="attendance">Work Shift</option>
+                            <option value="break">Break Interval</option>
+                        </select>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1.5">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Start Time</label>
+                            <input type="datetime-local" value={override.startTime} onChange={e => setOverride({...override, startTime: e.target.value})} className="w-full p-4 bg-slate-50 border-2 border-transparent rounded-2xl font-bold focus:border-indigo-600 outline-none" required />
+                        </div>
+                        <div className="space-y-1.5">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">End Time</label>
+                            <input type="datetime-local" value={override.endTime} onChange={e => setOverride({...override, endTime: e.target.value})} className="w-full p-4 bg-slate-50 border-2 border-transparent rounded-2xl font-bold focus:border-indigo-600 outline-none" required />
+                        </div>
+                    </div>
+                    <div className="space-y-1.5">
+                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Reason for Override</label>
+                         <textarea value={override.reason} onChange={e => setOverride({...override, reason: e.target.value})} className="w-full p-4 bg-slate-50 border-2 border-transparent rounded-2xl font-bold focus:border-indigo-600 outline-none h-24 resize-none" placeholder="Explain why manual bypass is needed..." required />
+                    </div>
+                    <button type="submit" className="w-full bg-slate-900 text-white p-5 rounded-3xl font-black hover:bg-black transition-all flex items-center justify-center gap-3">
+                        Save Manual Entry
+                    </button>
+                </form>
+            </DetailModal>
+
+            {/* Idle Warning Modal */}
+            <DetailModal isOpen={activeModal === 'idle'} onClose={() => setActiveModal(null)} title="Inactivity Detected">
+                <div className="text-center space-y-6 py-4">
+                    <div className="w-20 h-20 bg-amber-50 rounded-full flex items-center justify-center mx-auto text-amber-600 animate-bounce">
+                        <Timer size={40} />
+                    </div>
+                    <div>
+                        <h4 className="text-xl font-black text-slate-900 mb-2">Are you still working?</h4>
+                        <p className="text-slate-500 font-medium">We've detected no activity for a while. Please confirm to keep the timer running.</p>
+                    </div>
+                    <button onClick={() => setActiveModal(null)} className="w-full bg-indigo-600 text-white p-5 rounded-3xl font-black hover:bg-indigo-700 transition-all">
+                        Yes, I'm here
+                    </button>
+                </div>
             </DetailModal>
 
             <DetailModal isOpen={activeModal === 'leave'} onClose={() => setActiveModal(null)} title="Leave Application">

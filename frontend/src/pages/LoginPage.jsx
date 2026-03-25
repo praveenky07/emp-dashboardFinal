@@ -44,7 +44,7 @@ const LoginPage = () => {
         <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-100/60 rounded-full blur-[120px]" />
       </div>
 
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6 }}
@@ -61,7 +61,7 @@ const LoginPage = () => {
         <div className="bg-white p-10 rounded-[40px] shadow-2xl shadow-slate-200/60 border border-white">
           <form onSubmit={handleLogin} className="space-y-6">
             {error && (
-              <motion.div 
+              <motion.div
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 className="p-4 bg-red-50 border border-red-100 rounded-2xl flex items-start gap-3 text-red-700 text-sm font-bold"
@@ -75,13 +75,13 @@ const LoginPage = () => {
               <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Work Email</label>
               <div className="relative group">
                 <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-600 transition-colors" size={20} />
-                <input 
-                  type="email" 
+                <input
+                  type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="name@company.com"
-                  className="w-full pl-12 pr-4 py-4 bg-slate-50 border-2 border-transparent rounded-2xl text-slate-900 placeholder:text-slate-300 focus:border-indigo-600 focus:bg-white transition-all outline-none font-bold" 
-                  required 
+                  className="w-full pl-12 pr-4 py-4 bg-slate-50 border-2 border-transparent rounded-2xl text-slate-900 placeholder:text-slate-300 focus:border-indigo-600 focus:bg-white transition-all outline-none font-bold"
+                  required
                 />
               </div>
             </div>
@@ -93,24 +93,24 @@ const LoginPage = () => {
               </div>
               <div className="relative group">
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-600 transition-colors" size={20} />
-                <input 
-                  type="password" 
+                <input
+                  type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full pl-12 pr-4 py-4 bg-slate-50 border-2 border-transparent rounded-2xl text-slate-900 placeholder:text-slate-300 focus:border-indigo-600 focus:bg-white transition-all outline-none font-bold" 
-                  required 
+                  className="w-full pl-12 pr-4 py-4 bg-slate-50 border-2 border-transparent rounded-2xl text-slate-900 placeholder:text-slate-300 focus:border-indigo-600 focus:bg-white transition-all outline-none font-bold"
+                  required
                 />
               </div>
             </div>
 
             <div className="flex items-center gap-3 ml-1">
               <label className="relative flex items-center cursor-pointer">
-                <input 
-                  type="checkbox" 
-                  checked={rememberMe} 
-                  onChange={() => setRememberMe(!rememberMe)} 
-                  className="sr-only peer" 
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={() => setRememberMe(!rememberMe)}
+                  className="sr-only peer"
                 />
                 <div className="w-6 h-6 bg-slate-100 border-2 border-slate-200 rounded-lg peer-checked:bg-indigo-600 peer-checked:border-indigo-600 transition-all flex items-center justify-center">
                   <div className={`w-3 h-2 border-l-2 border-b-2 border-white -rotate-45 mb-1 ${rememberMe ? 'block' : 'hidden'}`} />
@@ -119,8 +119,8 @@ const LoginPage = () => {
               </label>
             </div>
 
-            <button 
-              type="submit" 
+            <button
+              type="submit"
               disabled={loading}
               className="w-full bg-indigo-600 text-white rounded-[20px] py-4.5 font-black hover:bg-indigo-700 active:scale-[0.98] transition-all shadow-xl shadow-indigo-100 flex items-center justify-center gap-2 group disabled:opacity-70 disabled:cursor-not-allowed"
             >
@@ -145,7 +145,7 @@ const LoginPage = () => {
               { role: 'Manager', email: 'manager@emp.com', p: 'manager123', color: 'bg-blue-100 text-blue-700' },
               { role: 'Employee', email: 'john@emp.com', p: 'employee123', color: 'bg-emerald-100 text-emerald-700' }
             ].map(mock => (
-              <button 
+              <button
                 key={mock.role}
                 onClick={() => setMock(mock.email, mock.p)}
                 className={`px-4 py-2 rounded-full text-[11px] font-black uppercase tracking-wider transition-all hover:scale-105 active:scale-95 ${mock.color}`}

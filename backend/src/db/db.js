@@ -203,4 +203,4 @@ const initDb = async () => {
 
 initDb();
 
-module.exports = db;
+module.exports = { db };

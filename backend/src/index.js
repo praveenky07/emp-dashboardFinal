@@ -74,24 +74,26 @@ app.get("/fix-user", async (req, res) => {
 
         const hashed = await bcrypt.hash("admin123", 10);
 
+        // ✅ Insert user
         await db.execute({
             sql: `INSERT INTO users (id, name, email, password, role)
                   VALUES (?, ?, ?, ?, ?)`,
             args: [1, 'Admin', 'admin@test.com', hashed, 'admin']
         });
 
+        // ✅ Insert employee (WITHOUT role)
         await db.execute({
-            sql: `INSERT INTO employees (id, user_id, name, role)
-                  VALUES (?, ?, ?, ?)`,
-            args: [1, 1, 'Admin', 'admin']
+            sql: `INSERT INTO employees (id, user_id, name)
+                  VALUES (?, ?, ?)`,
+            args: [1, 1, 'Admin']
         });
 
         await db.execute("PRAGMA foreign_keys = ON");
 
-        res.send("User fixed with relations ✅");
+        res.send("User fixed ✅");
 
     } catch (err) {
-        console.error(err);
+        console.error("FIX ERROR:", err); // 👈 IMPORTANT
         res.status(500).send("Fix failed ❌");
     }
 });

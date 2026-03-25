@@ -64,21 +64,36 @@ app.get("/api", (req, res) => {
 });
 app.get("/fix-user", async (req, res) => {
     const bcrypt = require("bcrypt");
-    const { db } = require("./db/db"); // adjust path if needed
+    const { db } = require("./db/db");
 
-    const hashed = await bcrypt.hash("admin123", 10);
+    try {
+        await db.execute("PRAGMA foreign_keys = OFF");
 
-    await db.execute({
-        sql: `DELETE FROM users WHERE email = 'admin@test.com'`
-    });
+        await db.execute("DELETE FROM employees");
+        await db.execute("DELETE FROM users");
 
-    await db.execute({
-        sql: `INSERT INTO users (name, email, password, role)
-          VALUES (?, ?, ?, ?)`,
-        args: ['Admin', 'admin@test.com', hashed, 'admin']
-    });
+        const hashed = await bcrypt.hash("admin123", 10);
 
-    res.send("User fixed ✅");
+        await db.execute({
+            sql: `INSERT INTO users (id, name, email, password, role)
+                  VALUES (?, ?, ?, ?, ?)`,
+            args: [1, 'Admin', 'admin@test.com', hashed, 'admin']
+        });
+
+        await db.execute({
+            sql: `INSERT INTO employees (id, user_id, name, role)
+                  VALUES (?, ?, ?, ?)`,
+            args: [1, 1, 'Admin', 'admin']
+        });
+
+        await db.execute("PRAGMA foreign_keys = ON");
+
+        res.send("User fixed with relations ✅");
+
+    } catch (err) {
+        console.error(err);
+        res.status(500).send("Fix failed ❌");
+    }
 });
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {

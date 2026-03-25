@@ -50,8 +50,8 @@ app.get('/health', (req, res) => res.send('API is running...'));
 app.use((err, req, res, next) => {
     console.error(`[ERROR] ${err.stack}`);
     res.status(err.status || 500).json({
-        error: process.env.NODE_ENV === 'production' 
-            ? 'Internal server error' 
+        error: process.env.NODE_ENV === 'production'
+            ? 'Internal server error'
             : err.message
     });
 });

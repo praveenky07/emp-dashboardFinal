@@ -3,6 +3,38 @@
 **EMP PRO** is a high-performance, modern, and fully integrated Employee Productivity Management system. Designed with a clean SaaS-style aesthetic, it empowers organizations to manage team capacity, monitor project risks, and streamline HR workflows through specialized dashboards for Employees, Managers, and Admins.
 
 ---
+# EMP PRO Dashboard 🚀
+
+## 🔗 Live Demo
+
+- 🌐 Frontend (Vercel): https://empdashboard-wine.vercel.app
+- ⚙️ Backend (Render): https://emp-dashboardfinal-1.onrender.com
+
+---
+
+## 👤 Demo Credentials
+
+### Employee
+Email: employee@emp.com  
+Password: employee123  
+
+### Manager
+Email: manager@emp.com  
+Password: manager123  
+
+### Admin
+Email: admin@emp.com  
+Password: admin123  
+
+---
+
+## 📌 Features
+
+- Role-based dashboards (Employee, Manager, Admin)
+- Leave management system (Apply / Approve / Reject)
+- Payslip generation (PDF)
+- Work logs tracking
+- Bonus & salary system
 
 ## 🚀 Core Features
 

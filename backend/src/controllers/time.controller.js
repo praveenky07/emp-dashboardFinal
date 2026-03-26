@@ -249,9 +249,53 @@ exports.getWorkHours = async (req, res) => {
         const rows = result.rows.map(r => {
             const start = new Date(r.login_time);
             const end = r.logout_time ? new Date(r.logout_time) : new Date();
+            const duration = Math.floor((end - start) / 1000);
             return {
-                ...r,
-                total_duration: Math.floor((end - start) / 1000)
+                userId: r.user_id,
+                checkIn: r.login_time,
+                checkOut: r.logout_time || null,
+                duration: duration,
+                status: r.logout_time ? 'Completed' : 'In Progress'
+            };
+        });
+        res.json(rows);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};
+exports.getTeamWorkHours = async (req, res) => {
+    const userId = req.user.id;
+    const role = req.user.role;
+    try {
+        let sql = `
+            SELECT a.*, u.name as user_name 
+            FROM attendance a 
+            JOIN users u ON a.user_id = u.id 
+        `;
+        let args = [];
+
+        if (role === 'manager') {
+            sql += ' WHERE u.manager_id = ?';
+            args.push(userId);
+        } else if (role !== 'admin' && role !== 'hr') {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+
+        sql += ' ORDER BY a.login_time DESC LIMIT 100';
+        
+        const result = await db.execute({ sql, args });
+        const rows = result.rows.map(r => {
+            const start = new Date(r.login_time);
+            const end = r.logout_time ? new Date(r.logout_time) : new Date();
+            const duration = Math.floor((end - start) / 1000);
+            return {
+                id: r.id,
+                userId: r.user_id,
+                userName: r.user_name,
+                checkIn: r.login_time,
+                checkOut: r.logout_time || null,
+                duration: duration,
+                status: r.logout_time ? 'Completed' : 'In Progress'
             };
         });
         res.json(rows);

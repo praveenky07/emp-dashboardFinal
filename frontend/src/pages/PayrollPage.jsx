@@ -61,14 +61,22 @@ const PayrollPage = () => {
         }
     };
 
-    const handleDownloadPayslip = (slip) => {
-        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(slip, null, 2));
-        const dnNode = document.createElement('a');
-        dnNode.setAttribute("href", dataStr);
-        dnNode.setAttribute("download", `payslip_${slip.month}_${slip.year}.json`);
-        document.body.appendChild(dnNode);
-        dnNode.click();
-        dnNode.remove();
+    const handleDownloadPayslip = async (slip) => {
+        try {
+            const response = await api.get(`/payroll/download/${slip.id}`, {
+                responseType: 'blob'
+            });
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `Payslip_${slip.month}_${slip.year}.pdf`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+        } catch (err) {
+            console.error('Download failed', err);
+            alert('Failed to download PDF payslip');
+        }
     };
 
     if (loading) return <div className="flex items-center justify-center min-h-[60vh]"><div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" /></div>;

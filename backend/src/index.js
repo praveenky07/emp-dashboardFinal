@@ -39,6 +39,7 @@ const benefitsRoutes = require('./routes/benefits.routes');
 const supportRoutes = require('./routes/support.routes');
 const tasksRoutes = require('./routes/tasks.routes');
 const managerRoutes = require('./routes/manager.routes');
+const adjustmentRoutes = require('./routes/adjustment.routes');
 
 // Public Routes
 app.use('/api/auth', authRoutes);
@@ -60,6 +61,7 @@ app.use('/api/tax', taxRoutes);
 app.use('/api/benefits', benefitsRoutes);
 app.use('/api/support', supportRoutes);
 app.use('/api/tasks', tasksRoutes);
+app.use('/api/adjustments', adjustmentRoutes);
 
 
 // Error Handling Middleware

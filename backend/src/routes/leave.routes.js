@@ -7,8 +7,14 @@ router.post('/apply', protect, leaveController.applyLeave);
 router.get('/my', protect, leaveController.getLeaves);
 router.post('/cancel/:id', protect, leaveController.cancelLeave);
 router.get('/balance', protect, leaveController.getLeaveBalances);
-router.get('/team', protect, authorize(['manager', 'admin']), leaveController.getTeamLeaves);
-router.get('/all-pending', protect, authorize(['manager', 'admin']), leaveController.getAllPendingLeaves);
-router.post('/update-status', protect, authorize(['manager', 'admin']), leaveController.updateLeaveStatus);
+
+// Standardized management routes
+router.get('/pending', protect, authorize(['manager', 'admin', 'hr']), leaveController.getAllPendingLeaves);
+router.get('/all-pending', protect, authorize(['manager', 'admin', 'hr']), leaveController.getAllPendingLeaves); // Backwards compatibility
+router.get('/team', protect, authorize(['manager', 'admin', 'hr']), leaveController.getTeamLeaves);
+
+// Match USER's specific request: PUT /api/leaves/update-status
+router.put('/update-status', protect, authorize(['manager', 'admin', 'hr']), leaveController.updateLeaveStatus);
+router.post('/status/:id', protect, authorize(['manager', 'admin', 'hr']), leaveController.updateLeaveStatus); // Backwards compatibility for AdminPanel
 
 module.exports = router;

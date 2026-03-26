@@ -206,10 +206,47 @@ const initDb = async () => {
         month TEXT NOT NULL,
         year INTEGER NOT NULL,
         base_salary REAL NOT NULL,
+        hra REAL DEFAULT 0,
+        allowances REAL DEFAULT 0,
         bonus REAL DEFAULT 0,
         tax REAL DEFAULT 0,
+        pf REAL DEFAULT 0,
+        insurance REAL DEFAULT 0,
         net_salary REAL NOT NULL,
         status TEXT DEFAULT 'Paid',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(user_id) REFERENCES users(id)
+      )
+    `);
+
+    // Safe migrations for payslips
+    try {
+      await db.execute('CREATE UNIQUE INDEX idx_payslip_user_month_year ON payslips(user_id, month, year)');
+      console.log('Added unique index to payslips');
+    } catch (e) { /* index already exists */ }
+
+    const payslipCols = ['hra', 'allowances', 'pf', 'insurance'];
+    for (const col of payslipCols) {
+      try {
+        await db.execute(`ALTER TABLE payslips ADD COLUMN ${col} REAL DEFAULT 0`);
+      } catch (e) { /* Col exists */ }
+    }
+
+    // Leave system: add appliedTo if missing
+    try {
+      await db.execute('ALTER TABLE leaves ADD COLUMN appliedTo INTEGER REFERENCES users(id)');
+      console.log('Added appliedTo to leaves table');
+    } catch (e) { /* Already exists */ }
+
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS salary_adjustments(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        amount REAL NOT NULL,
+        type TEXT CHECK(type IN('bonus', 'incentive', 'deduction', 'other')) NOT NULL,
+        description TEXT,
+        month TEXT NOT NULL,
+        year INTEGER NOT NULL,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY(user_id) REFERENCES users(id)
       )
@@ -390,20 +427,52 @@ const initDb = async () => {
         await db.execute({ sql: "INSERT OR IGNORE INTO benefit_plans (id, name, description, max_limit) VALUES (?, ?, ?, ?)", args: p });
     }
 
-    // 3. Payslips for the users
-    const months = ['March', 'February', 'January'];
-    for (const m of months) {
+    // 3. Payslips for the users (JAN, FEB, MAR)
+    const monthsData = [
+        { name: 'January', year: 2026, bonus: 500, tax: 450, pf: 200, allowances: 300 },
+        { name: 'February', year: 2026, bonus: 0, tax: 420, pf: 200, allowances: 300 },
+        { name: 'March', year: 2026, bonus: 1200, tax: 550, pf: 200, allowances: 300 }
+    ];
+
+    for (const m of monthsData) {
+        // Employee (3)
+        const earned3 = 6000 + m.bonus + m.allowances + 1200; // base + bonus + allowances + hra(approx)
+        const ded3 = m.tax + m.pf + 150; // tax + pf + insurance
         await db.execute({
-            sql: 'INSERT OR IGNORE INTO payslips (user_id, month, year, base_salary, tax, net_salary, status) VALUES (?, ?, ?, ?, ?, ?, ?)',
-            args: [3, m, 2025, 6000, 480, 5520, 'Paid']
+            sql: 'INSERT OR IGNORE INTO payslips (user_id, month, year, base_salary, bonus, allowances, hra, tax, pf, insurance, net_salary, status) VALUES (?, ?, ?, 6000, ?, ?, 1200, ?, ?, 150, ?, ?)',
+            args: [3, m.name, m.year, m.bonus, m.allowances, m.tax, m.pf, (earned3-ded3), 'Paid']
         });
+        // Manager (2)
+        const earned2 = 8500 + (m.bonus*1.5) + m.allowances + 1800;
+        const ded2 = (m.tax*1.5) + (m.pf*1.2) + 200;
         await db.execute({
-            sql: 'INSERT OR IGNORE INTO payslips (user_id, month, year, base_salary, tax, net_salary, status) VALUES (?, ?, ?, ?, ?, ?, ?)',
-            args: [2, m, 2025, 8500, 920, 7580, 'Paid']
+            sql: 'INSERT OR IGNORE INTO payslips (user_id, month, year, base_salary, bonus, allowances, hra, tax, pf, insurance, net_salary, status) VALUES (?, ?, ?, 8500, ?, ?, 1800, ?, ?, 200, ?, ?)',
+            args: [2, m.name, m.year, m.bonus*1.5, m.allowances, m.tax*1.5, m.pf*1.2, (earned2-ded2), 'Paid']
         });
     }
 
-    // 4. Mock Activity for Productivity Stats
+    // 4. Sample Leave Data (Employee -> Manager, Manager -> Admin)
+    const leavesData = [
+        { userId: 3, appliedTo: 2, start: '2026-04-10', end: '2026-04-12', reason: 'Family vacation', status: 'Pending' },
+        { userId: 3, appliedTo: 2, start: '2026-03-01', end: '2026-03-02', reason: 'Personal work', status: 'Approved' },
+        { userId: 2, appliedTo: 1, start: '2026-04-20', end: '2026-04-25', reason: 'Conference trip', status: 'Pending' },
+        { userId: 3, appliedTo: 2, start: '2026-02-15', end: '2026-02-16', reason: 'Sick leave', status: 'Rejected' }
+    ];
+
+    for (const l of leavesData) {
+        await db.execute({
+            sql: 'INSERT OR IGNORE INTO leaves (user_id, appliedTo, manager_id, start_date, end_date, reason, status) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            args: [l.userId, l.appliedTo, l.appliedTo, l.start, l.end, l.reason, l.status]
+        });
+    }
+
+    // 5. Explicit Test Leave for verification (Employee -> Manager)
+    await db.execute({
+        sql: 'INSERT OR IGNORE INTO leaves (user_id, appliedTo, manager_id, start_date, end_date, reason, status) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        args: [3, 2, 2, "2026-05-01", "2026-05-02", "Verification Test Leave", "Pending"]
+    });
+
+    // 6. Mock Activity for Productivity Stats
     const now = new Date();
     const todayStr = now.toISOString().split('T')[0];
     for (let u = 1; u <= 3; u++) {

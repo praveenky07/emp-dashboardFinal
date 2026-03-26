@@ -686,14 +686,18 @@ const EmployeeDashboard = () => {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-50">
-                            {workLogs.map(log => (
-                                <tr key={log.id} className="text-sm font-bold text-slate-600">
-                                    <td className="py-4 px-2">{new Date(log.start_time).toLocaleDateString()}</td>
-                                    <td className="py-4 px-2">{new Date(log.start_time).toLocaleTimeString()}</td>
-                                    <td className="py-4 px-2">{log.end_time ? new Date(log.end_time).toLocaleTimeString() : 'In Progress'}</td>
-                                    <td className="py-4 px-2 text-right text-slate-900">{formatTime(log.total_duration)}</td>
-                                </tr>
-                            ))}
+                             {workLogs.length > 0 ? workLogs.map((log, i) => (
+                                 <tr key={log.id || i} className="text-sm font-bold text-slate-600">
+                                     <td className="py-4 px-2">{log.checkIn ? new Date(log.checkIn).toLocaleDateString() : 'N/A'}</td>
+                                     <td className="py-4 px-2">{log.checkIn ? new Date(log.checkIn).toLocaleTimeString() : '--'}</td>
+                                     <td className="py-4 px-2">{log.checkOut ? new Date(log.checkOut).toLocaleTimeString() : <span className="text-indigo-600 animate-pulse">In Progress</span>}</td>
+                                     <td className="py-4 px-2 text-right text-slate-900">{formatTime(log.duration)}</td>
+                                 </tr>
+                             )) : (
+                                 <tr>
+                                     <td colSpan="4" className="py-10 text-center text-slate-400 font-bold uppercase tracking-widest text-xs">No work logs found</td>
+                                 </tr>
+                             )}
                         </tbody>
                     </table>
                 </div>

@@ -3,22 +3,35 @@ const { logActivity } = require('../db/logs');
 
 exports.applyLeave = async (req, res) => {
   const userId = req.user.id;
+  const role = req.user.role;
   const { startDate, endDate, reason } = req.body;
   try {
-    // Get manager_id from user
     const userResult = await db.execute({
       sql: 'SELECT manager_id FROM users WHERE id = ?',
       args: [userId]
     });
-    const managerId = userResult.rows[0]?.manager_id;
+    let managerId = userResult.rows[0]?.manager_id;
+    
+    // Find a default Admin (role='admin') if managerId is missing for managers
+    if (!managerId && (role === 'manager' || role === 'hr')) {
+       const adminResult = await db.execute("SELECT id FROM users WHERE role = 'admin' LIMIT 1");
+       managerId = adminResult.rows[0]?.id || 1; 
+    }
+
+    const appliedTo = managerId || 1; 
+
+    // DEBUG LOGS (Mandatory)
+    console.log(`[LEAVE_FLOW] Applying Leave: userId=${userId}, role=${role}, appliedTo=${appliedTo}, managerId=${managerId || 'NULL'}`);
+
+    const initialStatus = role === 'admin' ? 'Approved' : 'Pending';
 
     const result = await db.execute({
-      sql: 'INSERT INTO leaves (user_id, manager_id, start_date, end_date, reason, status) VALUES (?, ?, ?, ?, ?, ?)',
-      args: [userId, managerId, startDate, endDate, reason, 'Pending']
+      sql: 'INSERT INTO leaves (user_id, appliedTo, manager_id, start_date, end_date, reason, status) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      args: [userId, appliedTo, managerId, startDate, endDate, reason, initialStatus]
     });
     const requestId = result.lastInsertRowid?.toString();
-    await logActivity(userId, 'apply_leave', { requestId, startDate, endDate, managerId });
-    res.json({ message: 'Leave application submitted', requestId });
+    await logActivity(userId, 'apply_leave', { requestId, startDate, endDate, appliedTo, status: initialStatus });
+    res.json({ message: role === 'admin' ? 'Leave approved automatically' : 'Leave application submitted', requestId });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -66,11 +79,11 @@ exports.getAllPendingLeaves = async (req, res) => {
     let sql = "SELECT l.*, u.name as user_name FROM leaves l JOIN users u ON l.user_id = u.id WHERE l.status = 'Pending'";
     let args = [];
     
-    if (role === 'manager') {
-      sql += " AND l.manager_id = ?";
+    // Filter by who the request is applied to
+    if (role === 'manager' || role === 'admin' || role === 'hr') {
+      sql += " AND l.appliedTo = ?";
       args.push(userId);
     }
-    // Admin gets all pending
     
     sql += " ORDER BY created_at DESC";
     
@@ -88,8 +101,9 @@ exports.getTeamLeaves = async (req, res) => {
     let sql = "SELECT l.*, u.name as user_name FROM leaves l JOIN users u ON l.user_id = u.id";
     let args = [];
     
-    if (role === 'manager') {
-      sql += " WHERE l.manager_id = ?";
+    // Filter by management scope
+    if (role === 'manager' || role === 'admin' || role === 'hr') {
+      sql += " WHERE l.appliedTo = ?";
       args.push(userId);
     }
     
@@ -103,16 +117,61 @@ exports.getTeamLeaves = async (req, res) => {
 };
 
 exports.updateLeaveStatus = async (req, res) => {
-  const { id, status } = req.body; // status: Approved / Rejected
-  const userId = req.user.id;
+  const { id, status } = req.body;
+  const loggedInUserId = Number(req.user.id);
+  const role = req.user.role;
+
+  // 1. FORCE DEBUG LOGS (Mandatory)
+  console.log(`[LEAVE_UPDATE_START] Request: id=${id}, status=${status}, user=${loggedInUserId}, role=${role}`);
+
+  if (!id || !status) {
+    return res.status(400).json({ error: 'Missing id or status in request body' });
+  }
+
   try {
-    await db.execute({
+    // 2. Fetch leave from DB
+    const leaveCheck = await db.execute({
+      sql: 'SELECT * FROM leaves WHERE id = ?',
+      args: [id]
+    });
+
+    if (leaveCheck.rows.length === 0) {
+      console.log(`[LEAVE_UPDATE_FAIL] No record found with ID ${id}`);
+      return res.status(404).json({ error: `No leave record found with ID ${id}` });
+    }
+
+    const leave = leaveCheck.rows[0];
+    const appliedTo = Number(leave.appliedTo);
+
+    // 3. Check permission (Strict Number Comparison)
+    const isAuthorized = appliedTo === loggedInUserId || role === 'admin';
+    
+    console.log(`[LEAVE_AUTH_CHECK] id=${id}, user=${loggedInUserId}, appliedTo=${appliedTo}, isAuthorized=${isAuthorized}`);
+
+    if (!isAuthorized) {
+      console.error(`[LEAVE_AUTH_FAIL] Blocked: User ${loggedInUserId} (role: ${role}) tried to update leave ${id} owned by ${appliedTo}`);
+      return res.status(403).json({ error: 'Unauthorized: You are not the assigned manager for this leave request' });
+    }
+
+    // 4. Update Database
+    const result = await db.execute({
       sql: 'UPDATE leaves SET status = ? WHERE id = ?',
       args: [status, id]
     });
-    await logActivity(userId, 'update_leave_status', { requestId: id, status });
-    res.json({ message: `Leave application ${status}` });
+    
+    // 5. Verify persistence
+    if (result.rowsAffected === 0) {
+      console.error("[LEAVE_UPDATE_ERR] DB Error: Update returned 0 rows affected.");
+      return res.status(500).json({ error: 'Database update failed' });
+    }
+
+    console.log(`[LEAVE_UPDATE_SUCCESS] id=${id} set to ${status} by user ${loggedInUserId}`);
+
+    await logActivity(loggedInUserId, 'update_leave_status', { requestId: id, status });
+    res.json({ message: `Leave application ${status} successfully`, id, status });
   } catch (error) {
+    // 6. Detailed Error Recovery
+    console.error(`[LEAVE_UPDATE_CRIT] ${error.message}`);
     res.status(500).json({ error: error.message });
   }
 };
@@ -129,4 +188,3 @@ exports.getLeaveBalances = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
-

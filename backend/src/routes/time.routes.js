@@ -13,6 +13,7 @@ router.get('/status', protect, timeController.getSessionStatus);
 router.get('/stats', protect, timeController.getEmployeeStats);
 router.get('/productivity', protect, timeController.getProductivity);
 router.get('/work-hours', protect, timeController.getWorkHours);
+router.get('/team-hours', protect, authorize(['manager', 'admin', 'hr']), timeController.getTeamWorkHours);
 router.post('/manual-override', protect, authorize(['manager', 'admin']), timeController.manualOverride);
 
 

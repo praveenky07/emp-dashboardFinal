@@ -5,6 +5,7 @@ const { protect, authorize } = require('../middleware/auth.middleware');
 
 router.get('/my', protect, payrollController.getMyPayslips);
 router.get('/all', protect, authorize(['manager', 'admin']), payrollController.getAllPayslips);
-router.post('/generate', protect, authorize('admin'), payrollController.createPayslip);
+router.post('/generate', protect, authorize('admin', 'hr'), payrollController.createPayslip);
+router.get('/download/:id', protect, payrollController.downloadPayslip);
 
 module.exports = router;

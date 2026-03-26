@@ -35,7 +35,7 @@ const LeaveTracker = () => {
 
     const fetchTeamLeaves = async () => {
         try {
-            const { data } = await api.get('/leave/pending');
+            const { data } = await api.get('/leave/team');
             setTeamLeaves(data);
         } catch (error) {
             console.error('Error fetching team leaves', error);
@@ -65,11 +65,11 @@ const LeaveTracker = () => {
     const handleUpdateStatus = async (id, status) => {
         try {
             setLoading(true);
-            await api.post('/leave/status', { id, status });
+            await api.put('/leave/update-status', { id, status });
             fetchTeamLeaves();
             fetchLeaves();
         } catch (error) {
-            alert(error.response?.data?.message || 'Error updating status');
+            alert(error.response?.data?.error || 'Error updating status');
         } finally {
             setLoading(false);
         }
@@ -141,7 +141,7 @@ const LeaveTracker = () => {
             <div className="bg-white rounded-[40px] border border-slate-100 shadow-xl shadow-slate-200/50 overflow-hidden">
                 <div className="p-8 border-b border-slate-50 flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <h2 className="text-xl font-black text-slate-800">
-                        {activeTab === 'my' ? 'Application History' : 'Team Pending Requests'}
+                        {activeTab === 'my' ? 'Application History' : 'Team Management & History'}
                     </h2>
                     <div className="relative group flex-1 max-w-md">
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-600 transition-colors" size={18} />

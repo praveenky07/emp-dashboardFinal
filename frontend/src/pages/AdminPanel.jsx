@@ -29,7 +29,8 @@ import {
   CheckCircle,
   Download,
   Building2,
-  Trash
+  Trash,
+  Calendar
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -49,10 +50,10 @@ const AdminPanel = () => {
     const [deptToEdit, setDeptToEdit] = useState(null);
     const [newDeptName, setNewDeptName] = useState('');
     const [backingUp, setBackingUp] = useState(false);
+    const [newAdjustment, setNewAdjustment] = useState({ user_id: '', amount: '', type: 'bonus', description: '', month: 'January', year: new Date().getFullYear() });
 
     const fetchData = async () => {
         try {
-            setLoading(true);
             const [usersRes, logsRes, settingsRes, sessionsRes, deptsRes] = await Promise.all([
                 api.get('/admin/users'),
                 api.get('/admin/logs'),
@@ -134,6 +135,16 @@ const AdminPanel = () => {
         finally { setBackingUp(false); }
     };
 
+    const handleAddAdjustment = async (e) => {
+        e.preventDefault();
+        try {
+            await api.post('/adjustments/add', newAdjustment);
+            setActiveModal(null);
+            setNewAdjustment({ user_id: '', amount: '', type: 'bonus', description: '', month: 'January', year: new Date().getFullYear() });
+            alert('Salary adjustment added successfully');
+        } catch (err) { alert(err.response?.data?.error || 'Failed to add adjustment') }
+    };
+
     const handleCreateDept = async (e) => {
         e.preventDefault();
         try {
@@ -143,6 +154,7 @@ const AdminPanel = () => {
             fetchData();
         } catch (err) { alert(err.response?.data?.error || err.response?.data?.message || 'Failed to create department') }
     };
+
 
     const handleUpdateDept = async (e) => {
         e.preventDefault();
@@ -186,6 +198,13 @@ const AdminPanel = () => {
                     >
                          <Building2 size={18} />
                          <span>Manage Depts</span>
+                    </button>
+                    <button 
+                        onClick={() => setActiveModal('salaryAdjustment')}
+                        className="px-6 py-3.5 bg-slate-900 text-white rounded-2xl font-black hover:bg-black transition-all shadow-xl shadow-slate-200 flex items-center gap-2 cursor-pointer"
+                    >
+                         <Database size={18} className="text-indigo-400" />
+                         <span>Financial Audit</span>
                     </button>
                     <button 
                         onClick={() => setActiveModal('addUser')}
@@ -647,6 +666,77 @@ const AdminPanel = () => {
                     </button>
                 </form>
             </DetailModal>
+
+            {/* Salary Adjustment Modal - NEW */}
+            <DetailModal isOpen={activeModal === 'salaryAdjustment'} onClose={() => setActiveModal(null)} title="Add Financial Adjustment">
+                <form onSubmit={handleAddAdjustment} className="space-y-8">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                           <div className="space-y-1.5 md:col-span-2">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Target Employee</label>
+                                <select 
+                                  value={newAdjustment.user_id} 
+                                  onChange={e => setNewAdjustment({...newAdjustment, user_id: e.target.value})} 
+                                  className="w-full p-4.5 bg-slate-50 border-2 border-transparent rounded-2xl font-black uppercase tracking-widest focus:border-indigo-600 outline-none"
+                                  required
+                                >
+                                   <option value="" disabled>Select User</option>
+                                   {users.map(u => (
+                                       <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
+                                   ))}
+                                </select>
+                           </div>
+                           <div className="space-y-1.5">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Amount ($)</label>
+                                <input type="number" value={newAdjustment.amount} onChange={e => setNewAdjustment({...newAdjustment, amount: e.target.value})} className="w-full p-4.5 bg-slate-50 border-2 border-transparent rounded-2xl font-black uppercase tracking-widest focus:border-indigo-600 outline-none" required />
+                           </div>
+                           <div className="space-y-1.5">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Type</label>
+                                <select 
+                                  value={newAdjustment.type} 
+                                  onChange={e => setNewAdjustment({...newAdjustment, type: e.target.value})} 
+                                  className="w-full p-4.5 bg-slate-50 border-2 border-transparent rounded-2xl font-black uppercase tracking-widest focus:border-indigo-600 outline-none"
+                                  required
+                                >
+                                   <option value="bonus">Bonus</option>
+                                   <option value="incentive">Incentive</option>
+                                   <option value="deduction">Deduction</option>
+                                   <option value="other">Other</option>
+                                </select>
+                           </div>
+                           <div className="space-y-1.5">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Month</label>
+                                <select 
+                                  value={newAdjustment.month} 
+                                  onChange={e => setNewAdjustment({...newAdjustment, month: e.target.value})} 
+                                  className="w-full p-4.5 bg-slate-50 border-2 border-transparent rounded-2xl font-black uppercase tracking-widest focus:border-indigo-600 outline-none"
+                                  required
+                                >
+                                   {['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'].map(m => (
+                                       <option key={m} value={m}>{m}</option>
+                                   ))}
+                                </select>
+                           </div>
+                           <div className="space-y-1.5">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Year</label>
+                                <input type="number" value={newAdjustment.year} onChange={e => setNewAdjustment({...newAdjustment, year: e.target.value})} className="w-full p-4.5 bg-slate-50 border-2 border-transparent rounded-2xl font-black uppercase tracking-widest focus:border-indigo-600 outline-none" required />
+                           </div>
+                           <div className="space-y-1.5 md:col-span-2">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Description</label>
+                                <textarea 
+                                    value={newAdjustment.description} 
+                                    onChange={e => setNewAdjustment({...newAdjustment, description: e.target.value})} 
+                                    className="w-full p-4.5 bg-slate-50 border-2 border-transparent rounded-2xl font-black  focus:border-indigo-600 outline-none h-24"
+                                    placeholder="Reason for adjustment..."
+                                    required
+                                />
+                           </div>
+                    </div>
+                    <button type="submit" className="w-full bg-slate-900 text-white p-5 rounded-3xl font-black hover:bg-black transition-all shadow-xl shadow-slate-100 flex items-center justify-center gap-3">
+                        Submit Audit Adjustment
+                    </button>
+                </form>
+            </DetailModal>
+
         </div>
     );
 };

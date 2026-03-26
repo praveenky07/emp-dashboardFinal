@@ -36,14 +36,17 @@ import {
     ResponsiveContainer,
     Cell
 } from 'recharts';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const ManagerDashboard = () => {
+    const navigate = useNavigate();
     const [team, setTeam] = useState([]);
     const [leaves, setLeaves] = useState([]);
     const [metrics, setMetrics] = useState([]);
     const [loading, setLoading] = useState(true);
     const [teamLeaves, setTeamLeaves] = useState([]);
+    const [teamLogs, setTeamLogs] = useState([]);
 
     // UI state
     const [activeModal, setActiveModal] = useState(null); // 'reports', 'approvals', 'productivity', 'capacity', 'addMember', 'pulseFrontend', 'pulseDeadlines'
@@ -61,12 +64,12 @@ const ManagerDashboard = () => {
     const fetchData = async () => {
         try {
             const [teamRes, leavesRes, metricsRes, teamLeavesRes] = await Promise.all([
-                api.get('/admin/users'),
+                api.get('/manager/team'),
                 api.get('/leave/all-pending'),
                 api.get('/admin/metrics'),
                 api.get('/leave/team')
             ]);
-            setTeam(teamRes.data.filter(u => u.role === 'employee' || u.role === 'manager'));
+            setTeam(teamRes.data || []);
             setLeaves(leavesRes.data);
             setMetrics(metricsRes.data);
             setTeamLeaves(teamLeavesRes.data || []);
@@ -94,13 +97,6 @@ const ManagerDashboard = () => {
         fetchData();
     }, []);
 
-    const handleLeaveAction = async (id, status) => {
-        try {
-            await api.post('/leave/update-status', { id, status });
-            setLeaves(prev => prev.filter(l => l.id !== id));
-            fetchData();
-        } catch (err) { alert(err.response?.data?.error || err.response?.data?.message || 'Failed to update leave') }
-    };
 
     const handlePulseClick = async (type) => {
         setPulseData(null);
@@ -183,7 +179,7 @@ const ManagerDashboard = () => {
                     value={leaves.length}
                     icon={Hourglass}
                     color="orange"
-                    onClick={() => setActiveModal('approvals')}
+                    onClick={() => navigate('/leave')}
                 />
                 <ManagerStatCard
                     label="Avg. Productivity"
@@ -231,46 +227,67 @@ const ManagerDashboard = () => {
                             </ResponsiveContainer>
                         </div>
                     </section>
+
+                    {/* Team Attendance View - NEW */}
+                    <section className="bg-white p-10 rounded-[40px] border border-slate-100 shadow-xl shadow-slate-200/50">
+                        <div className="flex items-center justify-between mb-8">
+                            <div>
+                                <h2 className="text-2xl font-black text-slate-900 tracking-tight">Real-time Team Logs</h2>
+                                <p className="text-sm text-slate-400 font-medium">Monitoring active sessions and site attendance.</p>
+                            </div>
+                            <button 
+                                onClick={async () => {
+                                    try {
+                                        const { data } = await api.get('/time/team-hours');
+                                        setTeamLogs(data);
+                                        setActiveModal('teamLogs');
+                                    } catch(e) { console.error(e) }
+                                }}
+                                className="px-5 py-2.5 bg-indigo-50 border border-indigo-100 rounded-xl font-black text-indigo-600 text-[10px] uppercase tracking-widest hover:bg-indigo-600 hover:text-white transition-all shadow-sm"
+                            >
+                                View Full History
+                            </button>
+                        </div>
+                        <div className="space-y-4">
+                            {(teamLogs || []).slice(0, 5).map(log => (
+                                <div key={log.id} className="p-5 bg-slate-50 border border-slate-100 rounded-2xl flex items-center justify-between">
+                                    <div className="flex items-center gap-4">
+                                        <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center font-black text-indigo-600 shadow-sm">{log.userName[0]}</div>
+                                        <div>
+                                            <p className="text-sm font-black text-slate-900 leading-none mb-1">{log.userName}</p>
+                                            <p className="text-[9px] text-slate-400 font-bold uppercase">{log.status}</p>
+                                        </div>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="text-[10px] font-black text-slate-900">{log.checkIn ? new Date(log.checkIn).toLocaleTimeString() : '--'}</p>
+                                        <p className="text-[8px] text-slate-400 font-black uppercase mt-1">{log.checkOut ? 'COMPLETED' : 'IN PROGRESS'}</p>
+                                    </div>
+                                </div>
+                            ))}
+                            {(!teamLogs || teamLogs.length === 0) && <p className="text-center py-10 text-slate-400 font-bold uppercase tracking-widest text-xs border-2 border-dashed border-slate-100 rounded-3xl opacity-50">No recent logs found</p>}
+                        </div>
+                    </section>
                 </div>
 
                 {/* Right Column: Approvals & Pulse */}
                 <div className="space-y-8">
-                    <section className="bg-slate-900 p-10 rounded-[40px] text-white shadow-2xl relative overflow-hidden group">
-                        <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 rounded-full -mr-32 -mt-32 blur-3xl transition-transform group-hover:scale-110" />
-                        <h2 className="text-2xl font-black mb-8 flex items-center gap-3 relative z-10">
-                            <Calendar className="text-indigo-400" size={24} />
-                            Quick Approvals
+                    <section className="bg-indigo-600 p-10 rounded-[40px] text-white shadow-2xl relative overflow-hidden group">
+                        <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -mr-32 -mt-32 blur-3xl transition-transform group-hover:scale-110" />
+                        <h2 className="text-2xl font-black mb-6 flex items-center gap-3 relative z-10">
+                            <Zap className="text-white fill-current" size={24} />
+                            Team Efficiency
                         </h2>
-
-                        <div className="space-y-6 relative z-10 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
-                            {leaves.length === 0 ? (
-                                <div className="text-center py-12 opacity-60">
-                                    <div className="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center mx-auto mb-6 border border-white/5">
-                                        <UserCheck2 className="opacity-30 text-indigo-400" size={40} />
-                                    </div>
-                                    <p className="text-xs font-black uppercase tracking-[0.2em] text-indigo-200">Perfect Status</p>
-                                </div>
-                            ) : (
-                                <AnimatePresence>
-                                    {leaves.map(leave => (
-                                        <motion.div layout initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, scale: 0.95 }} key={leave.id} className="bg-white/5 border border-white/10 rounded-3xl p-6 hover:bg-white/10 transition-all group">
-                                            <div className="flex justify-between items-start mb-4">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="w-10 h-10 rounded-xl bg-indigo-500/20 flex items-center justify-center font-black text-indigo-400 ring-2 ring-white/5">{leave.user_name?.[0]}</div>
-                                                    <div>
-                                                        <p className="font-black text-white text-sm leading-tight">{leave.user_name}</p>
-                                                        <p className="text-[9px] text-indigo-300 font-black uppercase tracking-widest mt-1">Leave Application</p>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div className="flex gap-2">
-                                                <button onClick={() => handleLeaveAction(leave.id, 'Approved')} className="flex-1 bg-white text-slate-900 py-3 rounded-2xl text-[10px] font-black hover:bg-indigo-50 transition-all flex items-center justify-center gap-2 uppercase tracking-widest">Approve</button>
-                                                <button onClick={() => handleLeaveAction(leave.id, 'Rejected')} className="px-4 bg-red-500/20 text-red-400 hover:bg-red-500/40 py-3 rounded-2xl transition-all border border-red-500/30 font-black italic">R</button>
-                                            </div>
-                                        </motion.div>
-                                    ))}
-                                </AnimatePresence>
-                            )}
+                        <p className="text-indigo-100 font-medium mb-8 relative z-10 leading-relaxed text-sm">
+                            Department is currently operating at <span className="text-white font-black underline decoration-white/30 decoration-2">92% capacity</span> with optimal resource distribution.
+                        </p>
+                        <div className="space-y-4 relative z-10">
+                            <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-widest text-indigo-200">
+                                <span>Utilization Rate</span>
+                                <span className="text-white">88%</span>
+                            </div>
+                            <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
+                                <div className="h-full bg-white rounded-full" style={{ width: '88%' }} />
+                            </div>
                         </div>
                     </section>
 
@@ -452,60 +469,6 @@ const ManagerDashboard = () => {
                     </div>
                 </div>
             </div>
-            {/* Team Leave History Section */}
-            <div className="bg-white rounded-[40px] border border-slate-100 shadow-xl shadow-slate-200/50 overflow-hidden">
-                <div className="p-8 border-b border-slate-50 flex items-center justify-between">
-                    <div>
-                        <h2 className="text-2xl font-black text-slate-900 tracking-tight">Team Leave Requests</h2>
-                        <p className="text-slate-500 text-sm font-medium">History of all team time-off applications</p>
-                    </div>
-                </div>
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left">
-                        <thead>
-                            <tr className="bg-slate-50/50">
-                                <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Employee</th>
-                                <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Period</th>
-                                <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Reason</th>
-                                <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-50">
-                            {(teamLeaves || []).length > 0 ? (teamLeaves || []).map((lv, i) => (
-                                <tr key={lv.id || i} className="hover:bg-slate-50/50 transition-colors">
-                                    <td className="px-8 py-5">
-                                        <p className="text-sm font-black text-slate-900">{lv.user_name}</p>
-                                        <p className="text-[10px] font-bold text-slate-400">{new Date(lv.created_at).toLocaleDateString()}</p>
-                                    </td>
-                                    <td className="px-8 py-5">
-                                        <div className="flex items-center gap-2 text-sm font-black text-slate-700">
-                                            <span>{lv.start_date}</span>
-                                            <span className="text-slate-300">→</span>
-                                            <span>{lv.end_date}</span>
-                                        </div>
-                                    </td>
-                                    <td className="px-8 py-5">
-                                        <p className="text-sm font-medium text-slate-500 truncate max-w-xs">{lv.reason}</p>
-                                    </td>
-                                    <td className="px-8 py-5">
-                                        <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border ${
-                                            lv.status === 'Approved' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
-                                            lv.status === 'Rejected' ? 'bg-red-50 text-red-700 border-red-100' :
-                                            'bg-amber-50 text-amber-700 border-amber-100'
-                                        }`}>
-                                            {lv.status}
-                                        </span>
-                                    </td>
-                                </tr>
-                            )) : (
-                                <tr>
-                                    <td colSpan="4" className="px-8 py-10 text-center text-slate-400 font-bold uppercase tracking-widest">No history found</td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
 
             {/* Pulse: Frontend Squad Detail */}
             <DetailModal isOpen={activeModal === 'pulseFrontend'} onClose={() => setActiveModal(null)} title="Squad Insight: Frontend">
@@ -658,30 +621,6 @@ const ManagerDashboard = () => {
                 </div>
             </DetailModal>
 
-            {/* Leave Approvals Modal */}
-            <DetailModal isOpen={activeModal === 'approvals'} onClose={() => setActiveModal(null)} title="Pending Approvals">
-                <div className="space-y-6">
-                    {leaves.map(leave => (
-                        <div key={leave.id} className="bg-slate-50 p-8 rounded-[32px] border border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-6">
-                            <div className="flex items-center gap-6">
-                                <div className="w-16 h-16 bg-white rounded-3xl flex items-center justify-center font-black text-2xl text-indigo-600 shadow-sm shrink-0 border-2 border-indigo-50">{leave.user_name[0]}</div>
-                                <div>
-                                    <h4 className="text-xl font-black text-slate-900 mb-1">{leave.user_name}</h4>
-                                    <p className="text-xs font-bold text-slate-400 mb-2 italic">"{leave.reason}"</p>
-                                    <div className="flex items-center gap-3 text-[10px] font-black text-slate-500 uppercase tracking-widest bg-white/50 w-fit px-4 py-1.5 rounded-full border border-slate-100">
-                                        <Calendar size={12} className="text-indigo-600" /> {leave.start_date} → {leave.end_date}
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="flex gap-3 shrink-0">
-                                <button onClick={() => handleLeaveAction(leave.id, 'Approved')} className="px-6 py-4 bg-indigo-600 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-all">Approve</button>
-                                <button onClick={() => handleLeaveAction(leave.id, 'Rejected')} className="px-6 py-4 bg-white border border-slate-100 text-red-500 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-red-50 transition-all">Reject</button>
-                            </div>
-                        </div>
-                    ))}
-                    {leaves.length === 0 && <p className="text-center py-10 text-slate-400 font-bold uppercase tracking-widest">No pending requests</p>}
-                </div>
-            </DetailModal>
 
             {/* Productivity Modal */}
             <DetailModal isOpen={activeModal === 'productivity'} onClose={() => setActiveModal(null)} title="Avg. Team Productivity">
@@ -723,6 +662,38 @@ const ManagerDashboard = () => {
                     <CapacityCard label="Frontend Team" value="88%" status="Optimal" color="indigo" />
                     <CapacityCard label="Backend Core" value="94%" status="Critical" color="red" />
                     <CapacityCard label="Design Systems" value="65%" status="Available" color="emerald" />
+                </div>
+            </DetailModal>
+
+            {/* Team Logs Modal */}
+            <DetailModal isOpen={activeModal === 'teamLogs'} onClose={() => setActiveModal(null)} title="Department Attendance History">
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                        <thead>
+                            <tr className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-50">
+                                <th className="pb-4 px-2">Employee</th>
+                                <th className="pb-4 px-2">Date</th>
+                                <th className="pb-4 px-2">Started</th>
+                                <th className="pb-4 px-2">Ended</th>
+                                <th className="pb-4 px-2 text-right">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-50">
+                            {(teamLogs || []).map(log => (
+                                <tr key={log.id} className="text-sm font-bold text-slate-600">
+                                    <td className="py-4 px-2 text-slate-900">{log.userName}</td>
+                                    <td className="py-4 px-2">{log.checkIn ? new Date(log.checkIn).toLocaleDateString() : 'N/A'}</td>
+                                    <td className="py-4 px-2">{log.checkIn ? new Date(log.checkIn).toLocaleTimeString() : '--'}</td>
+                                    <td className="py-4 px-2">{log.checkOut ? new Date(log.checkOut).toLocaleTimeString() : '--'}</td>
+                                    <td className="py-4 px-2 text-right">
+                                        <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase ${log.status === 'Completed' ? 'bg-emerald-50 text-emerald-600' : 'bg-indigo-50 text-indigo-600 animate-pulse'}`}>
+                                            {log.status}
+                                        </span>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
                 </div>
             </DetailModal>
 

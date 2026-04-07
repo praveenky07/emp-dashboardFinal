@@ -1,0 +1,123 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --primary: #6366f1; /* Indigo 500 */
+  --primary-dark: #4f46e5; /* Indigo 600 */
+  --bg-main: #f8fafc;
+  --bg-card: #ffffff;
+  --text-heading: #111827;
+  --text-body: #374151;
+  --text-muted: #6b7280;
+  --border: #e5e7eb;
+}
+
+@layer base {
+  body {
+    @apply bg-[#f8fafc] text-[#374151] antialiased;
+    font-family: 'Inter', sans-serif;
+  }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #e2e8f0;
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #cbd5e1;
+}
+
+/* Layout Utilities */
+.app-layout {
+  display: flex;
+  width: 100%;
+  min-height: 100vh;
+  background-color: var(--bg-main);
+}
+
+.sidebar {
+  width: 280px;
+  position: fixed;
+  left: 0;
+  top: 0;
+  height: 100vh;
+  z-index: 50;
+  background-color: white;
+  border-right: 1px solid var(--border);
+  transition: transform 0.3s ease;
+}
+
+.main-content {
+  margin-left: 280px;
+  width: calc(100% - 280px);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+@media (max-width: 1024px) {
+  .sidebar {
+    transform: translateX(-100%);
+  }
+  .sidebar.open {
+    transform: translateX(0);
+  }
+  .main-content {
+    margin-left: 0 !important;
+    width: 100% !important;
+  }
+}
+
+/* Redesigned Table */
+.modern-table {
+  @apply w-full text-left border-separate border-spacing-0;
+}
+.modern-table th {
+  @apply bg-slate-50 border-b border-gray-200 px-6 py-4 text-[11px] font-bold uppercase tracking-wider text-slate-500;
+}
+.modern-table td {
+  @apply px-6 py-4 border-b border-slate-100 text-sm align-middle;
+}
+.modern-table tr:last-child td {
+  @apply border-b-0;
+}
+.modern-table tr:hover {
+  @apply bg-slate-50/50;
+}
+
+/* Cards */
+.modern-card {
+  @apply bg-white rounded-2xl border border-slate-200/60 shadow-sm hover:shadow-md transition-all duration-300;
+}
+
+/* Buttons */
+.btn-primary {
+  @apply bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white font-semibold py-3 px-6 rounded-xl transition-all duration-300 active:scale-[0.98] shadow-lg shadow-indigo-100 flex items-center justify-center gap-2;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.4s ease-out forwards;
+}
+
+/* Glass effect refinement */
+.glass-light {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}

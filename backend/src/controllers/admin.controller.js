@@ -41,12 +41,20 @@ exports.updateEmployeeDetails = async (req, res) => {
             args: [name, role, department_id, salary, id]
         });
 
-        if (salary !== oldSalary) {
+        if (Number(salary) !== Number(oldSalary)) {
             await db.execute({
                 sql: 'INSERT INTO salary_history (user_id, old_salary, new_salary, updated_by) VALUES (?, ?, ?, ?)',
                 args: [id, oldSalary, salary, adminId]
             });
         }
+
+        const clientIp = req.ip || req.headers['x-forwarded-for'];
+        const clientUa = req.headers['user-agent'];
+        await logActivity(adminId, 'update_employee_details', { targetUserId: id, name, role, salary }, clientIp, clientUa);
+
+        try {
+            emitStatsUpdated(getIo(), { message: 'Employee updated', employeeId: id });
+        } catch(e) {}
 
         res.json({ message: 'Employee details updated successfully' });
     } catch (error) {
@@ -82,11 +90,15 @@ exports.deleteUser = async (req, res) => {
     await db.execute({ sql: 'DELETE FROM leaves WHERE user_id = ?', args: [id] });
     await db.execute({ sql: 'DELETE FROM users WHERE id = ?', args: [id] });
     
+    const clientIp = req.ip || req.headers['x-forwarded-for'];
+    const clientUa = req.headers['user-agent'];
+    await logActivity(req.user.id, 'delete_user', { targetUserId: id }, clientIp, clientUa);
+    
     try {
         emitUserDeleted(getIo(), { userId: id });
         emitStatsUpdated(getIo(), { message: 'User deleted via admin' });
-    } catch(e) { console.error('Socket error emitting admin hooks', e); }
-    
+    } catch(e) {}
+
     res.json({ message: 'User deleted' });
   } catch (error) {
     res.status(500).json({ error: error.message });

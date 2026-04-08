@@ -55,6 +55,9 @@ exports.login = async (req, res) => {
 
     console.log('[DEBUG] Generated Token (prefix):', token.substring(0, 10));
 
+    const clientIp = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+    const clientUa = req.headers['user-agent'];
+
     res.json({
       token,
       user: { 
@@ -68,8 +71,11 @@ exports.login = async (req, res) => {
       }
     });
 
+    // Fire-and-forget logging for professional audit trail
+    logActivity(user.id, 'login', { email: user.email }, clientIp, clientUa).catch(console.error);
+
   } catch (error) {
-    console.error('[DEBUG] Login error detail:', error);
+    console.error('[AUTH] Login error:', error);
     res.status(500).json({ error: 'Internal server error during login' });
   }
 
@@ -336,9 +342,10 @@ exports.updateProfile = async (req, res) => {
     const { name } = req.body;
     const userId = req.user.id;
 
-    if (!name) return res.status(400).json({ message: 'Name is required' });
-
     try {
+        const clientIp = req.ip || req.headers['x-forwarded-for'];
+        const clientUa = req.headers['user-agent'];
+
         await db.execute({
             sql: 'UPDATE users SET name = ? WHERE id = ?',
             args: [name, userId]
@@ -348,6 +355,8 @@ exports.updateProfile = async (req, res) => {
             sql: 'UPDATE employees SET name = ? WHERE user_id = ?',
             args: [name, userId]
         });
+
+        await logActivity(userId, 'update_profile', { name }, clientIp, clientUa);
 
         res.json({ message: 'Profile updated successfully', name });
     } catch (error) {

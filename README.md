@@ -35,13 +35,15 @@ Password: admin123
 - Payslip generation (PDF)
 - Work logs tracking
 - Bonus & salary system
+- **Forensic Audit Logging** (IP & User Agent tracking)
+- **API Rate Limiting** (DDoS Protection)
 
 ## 🚀 Core Features
 
 ### 🏢 Role-Based Dashboards
 - **Employee Dashboard**: Manage work sessions, track breaks, view productivity history, and submit leave requests.
 - **Manager Dashboard**: Comprehensive team overview with Quick Approvals for leave, department-level metrics, and real-time team capacity tracking.
-- **Admin Dashboard**: Advanced system control including user management, role assignment, active session monitoring, and automated database backups.
+- **Admin Dashboard**: Advanced system control including user management, role assignment, active session monitoring, and **Real-time System Audit Trail**.
 
 ### ⚡ Interactive Team Pulse
 The Manager Dashboard features an intelligent **Team Pulse** section that transforms static alerts into actionable insights:

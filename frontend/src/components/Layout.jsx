@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate, useLocation, Outlet } from 'react-router-dom';
+import api from '../services/api';
 import { 
   LayoutDashboard, 
   Users, 
@@ -21,11 +22,14 @@ import {
   Mail,
   Shield,
   Briefcase as DeptIcon,
-  Video as VideoIcon
+  Video as VideoIcon,
+  MessageSquare
 } from 'lucide-react';
+
 import socket, { connectSocket, disconnectSocket } from '../services/socket';
 import { motion, AnimatePresence } from 'framer-motion';
 import DetailModal from './DetailModal';
+import { useUser } from '../context/UserContext';
 
 const Sidebar = ({ user, isOpen, setIsOpen }) => {
   const role = user.role?.toLowerCase() || '';
@@ -38,7 +42,9 @@ const Sidebar = ({ user, isOpen, setIsOpen }) => {
     { name: 'Leave', icon: Calendar, path: '/leave', roles: ['employee', 'manager', 'admin'] },
     { name: 'Meetings', icon: VideoIcon, path: '/meetings', roles: ['employee', 'manager', 'admin'] },
     { name: 'Performance', icon: BarChart3, path: '/performance', roles: ['employee', 'manager', 'admin'] },
+    { name: 'Messages', icon: MessageSquare, path: '/chat', roles: ['employee', 'manager', 'admin'] },
     { name: 'Support', icon: LifeBuoy, path: '/support', roles: ['employee', 'manager', 'admin'] },
+
     { name: 'Settings', icon: Settings, path: '/settings', roles: ['employee', 'manager', 'admin'] },
     { name: 'Admin Panel', icon: ShieldCheck, path: '/admin', roles: ['admin'] },
   ].filter(item => item.roles.includes(role));
@@ -98,6 +104,49 @@ const Sidebar = ({ user, isOpen, setIsOpen }) => {
 };
 
 const Navbar = ({ user, onLogout, toggleSidebar }) => {
+  const navigate = useNavigate();
+  const [notifications, setNotifications] = useState([]);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    const fetchNotifications = async () => {
+      try {
+        const res = await api.get('/chat/notifications');
+        setNotifications(res.data);
+        setUnreadCount(res.data.filter(n => !n.is_read).length);
+      } catch (err) { console.error('Failed to fetch notifications', err); }
+    };
+
+    fetchNotifications();
+
+    socket.on('new_notification', (data) => {
+      setNotifications(prev => [data, ...prev]);
+      setUnreadCount(prev => prev + 1);
+    });
+
+    return () => {
+      socket.off('new_notification');
+    };
+  }, []);
+
+  const handleMarkRead = async () => {
+    try {
+      await api.post('/chat/notifications/read');
+      setUnreadCount(0);
+      setNotifications(prev => prev.map(n => ({ ...n, is_read: 1 })));
+    } catch (err) { console.error('Mark read failed', err); }
+  };
+
+  const handleNotificationClick = (n) => {
+      handleMarkRead();
+      setShowNotifications(false);
+      const metadata = n.metadata ? JSON.parse(n.metadata) : {};
+      if (metadata.type === 'private') {
+          navigate(`/chat`);
+      }
+  };
+
   return (
     <header className="h-20 flex items-center justify-between px-8 bg-white border-b border-[#e5e7eb] sticky top-0 z-40">
       <div className="flex items-center gap-4">
@@ -115,10 +164,62 @@ const Navbar = ({ user, onLogout, toggleSidebar }) => {
       </div>
       
       <div className="flex items-center gap-5">
-        <button className="p-2.5 text-[#6b7280] hover:bg-slate-50 rounded-full transition-all relative">
-          <Bell size={20} />
-          <span className="absolute top-2 right-2 w-2 h-2 bg-indigo-500 rounded-full border-2 border-white"></span>
-        </button>
+        <div className="relative">
+            <button 
+                onClick={() => {
+                    setShowNotifications(!showNotifications);
+                    if (!showNotifications && unreadCount > 0) handleMarkRead();
+                }}
+                className="p-2.5 text-[#6b7280] hover:bg-slate-50 rounded-full transition-all relative"
+            >
+                <Bell size={20} />
+                {unreadCount > 0 && (
+                    <span className="absolute top-2 right-2 w-4 h-4 bg-indigo-500 text-white text-[9px] flex items-center justify-center rounded-full border-2 border-white font-black">
+                        {unreadCount}
+                    </span>
+                )}
+            </button>
+
+            <AnimatePresence>
+                {showNotifications && (
+                    <motion.div 
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 10 }}
+                        className="absolute right-0 mt-4 w-80 bg-white border border-[#e5e7eb] rounded-[24px] shadow-2xl z-50 overflow-hidden"
+                    >
+                        <div className="p-5 border-b border-[#f3f4f6] flex justify-between items-center bg-slate-50/50">
+                            <h3 className="text-sm font-black text-[#111827] uppercase tracking-wider">Alerts Center</h3>
+                            <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-full">{unreadCount} New</span>
+                        </div>
+                        <div className="max-h-[400px] overflow-y-auto custom-scrollbar">
+                            {notifications.length > 0 ? (
+                                notifications.map((n, i) => (
+                                    <div 
+                                        key={n.id || i}
+                                        onClick={() => handleNotificationClick(n)}
+                                        className={`p-5 flex gap-4 hover:bg-slate-50 cursor-pointer border-b border-[#f3f4f6] last:border-0 transition-all ${!n.is_read ? 'bg-indigo-50/30' : ''}`}
+                                    >
+                                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${!n.is_read ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-400'}`}>
+                                            <MessageSquare size={18} />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <p className={`text-sm leading-snug ${!n.is_read ? 'text-[#111827] font-bold' : 'text-slate-500 font-medium'}`}>{n.message}</p>
+                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{new Date(n.created_at).toLocaleTimeString()}</p>
+                                        </div>
+                                    </div>
+                                ))
+                            ) : (
+                                <div className="p-10 text-center text-slate-400 space-y-3">
+                                    <Bell size={32} className="mx-auto opacity-20" />
+                                    <p className="text-xs font-bold uppercase tracking-widest">No notifications yet</p>
+                                </div>
+                            )}
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+        </div>
         
         <div className="h-8 w-px bg-[#e5e7eb]"></div>
 
@@ -153,75 +254,39 @@ const Navbar = ({ user, onLogout, toggleSidebar }) => {
 }
 
 const Layout = () => {
-  const [user, setUser] = useState({ name: 'Guest', role: 'None' });
+  const { user, logout } = useUser();
   const navigate = useNavigate();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
 
   useEffect(() => {
-    let currentUserId = null;
-    try {
-        const storedUser = localStorage.getItem('user');
+    if (user?.id) {
         const token = localStorage.getItem('token');
-        if (storedUser && token) {
-            const parsed = JSON.parse(storedUser);
-            currentUserId = parsed.id;
-            connectSocket(token);
-            socket.emit('userOnline', currentUserId);
-            
-            // Critical for Mobile: Re-announce online state when recovering from background suspension
-            socket.on('connect', () => {
-                 socket.emit('userOnline', currentUserId);
-            });
-        }
-    } catch(err) { console.error('Socket init err', err) }
+        connectSocket(token);
+        socket.emit('userOnline', user.id);
+        
+        socket.on('connect', () => {
+             socket.emit('userOnline', user.id);
+        });
+    }
 
     return () => {
         socket.off('connect');
         disconnectSocket();
     };
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
-    const loadUser = async () => {
-      try {
-        const storedUser = localStorage.getItem('user');
-        if (storedUser) setUser(JSON.parse(storedUser));
-        
-        // Fetch fresh data for profile_image and other updates
-        const token = localStorage.getItem('token');
-        if (token) {
-          const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/users/profile`, {
-            headers: { Authorization: `Bearer ${token}` }
-          });
-          if (res.ok) {
-            const freshUser = await res.json();
-            setUser(prev => ({ ...prev, ...freshUser }));
-            localStorage.setItem('user', JSON.stringify({...JSON.parse(storedUser || '{}'), ...freshUser}));
-          }
-        }
-      } catch (err) {
-        console.error('Error loading fresh user data in Layout', err);
-      }
-    };
-    loadUser();
-    const handleProfileUpdate = () => loadUser();
     window.openProfile = () => setShowProfile(true);
-    window.addEventListener('profileUpdated', handleProfileUpdate);
-    
     return () => {
-        window.removeEventListener('profileUpdated', handleProfileUpdate);
         delete window.openProfile;
     };
-  }, [location.pathname]); 
+  }, []); 
 
   const handleLogout = () => {
     if (user?.id) socket.emit('userOffline', user.id);
-    disconnectSocket();
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    window.removeEventListener('profileUpdated', () => {});
+    logout();
     navigate('/login');
   };
 

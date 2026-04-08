@@ -15,9 +15,10 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { updateProfile, updatePassword, uploadProfileImage, getUserProfile } from '../services/userService';
+import { useUser } from '../context/UserContext';
 
 const Settings = () => {
-  const [user, setUser] = useState({});
+  const { user, setUser, refreshUser } = useUser();
   const [activeTab, setActiveTab] = useState('profile');
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState('');
@@ -45,35 +46,18 @@ const Settings = () => {
   });
 
   useEffect(() => {
-    const fetchUser = async () => {
-      try {
-        const storedUser = localStorage.getItem('user');
-        if (storedUser) {
-          const parsed = JSON.parse(storedUser);
-          setUser(parsed);
-          setProfileData(prev => ({
-            ...prev,
-            name: parsed.name || '',
-            email: parsed.email || '',
-            role: parsed.role || '',
-            profile_image: parsed.profile_image || '',
-          }));
-        }
+    if (user) {
+      setProfileData({
+        name: user.name || '',
+        email: user.email || '',
+        role: user.role || '',
+        profile_image: user.profile_image || '',
+      });
+    }
+  }, [user]);
 
-        const freshData = await getUserProfile();
-        setUser(prev => ({...prev, ...freshData}));
-        setProfileData({
-          name: freshData.name || '',
-          email: freshData.email || '',
-          role: freshData.role || '',
-          profile_image: freshData.profile_image || ''
-        });
-        localStorage.setItem('user', JSON.stringify({...JSON.parse(storedUser || '{}'), ...freshData}));
-      } catch (err) {
-        console.error('Failed to fetch fresh user profile', err);
-      }
-    };
-    fetchUser();
+  useEffect(() => {
+    refreshUser();
   }, []);
 
   const handleImageUpload = async (e) => {
@@ -93,14 +77,10 @@ const Settings = () => {
     try {
       const res = await uploadProfileImage(file);
       const newImageUrl = res.imageUrl;
+      setUser(prev => ({ ...prev, profile_image: newImageUrl }));
       setProfileData(prev => ({...prev, profile_image: newImageUrl}));
       
-      const updatedUser = { ...user, profile_image: newImageUrl };
-      setUser(updatedUser);
-      localStorage.setItem('user', JSON.stringify(updatedUser));
-      
       setSuccess('Profile image updated successfully!');
-      window.dispatchEvent(new Event('profileUpdated'));
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
       console.error(err);
@@ -117,14 +97,9 @@ const Settings = () => {
     setError('');
     setSuccess('');
     try {
-      const res = await updateProfile({ name: profileData.name });
+      await updateProfile({ name: profileData.name });
       setSuccess('Profile updated successfully!');
-      
-      // Update local storage
-      const updatedUser = { ...user, name: profileData.name };
-      localStorage.setItem('user', JSON.stringify(updatedUser));
-      setUser(updatedUser);
-      
+      setUser(prev => ({ ...prev, name: profileData.name }));
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to update profile');

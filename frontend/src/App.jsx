@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { useUser } from './context/UserContext';
 import LoginPage from './pages/LoginPage';
 import EmployeeDashboard from './pages/EmployeeDashboard';
 import ManagerDashboard from './pages/ManagerDashboard';
@@ -11,24 +12,27 @@ import SupportPage from './pages/SupportPage';
 import PerformancePage from './pages/PerformancePage';
 import MeetingsPage from './pages/MeetingsPage';
 import AttendancePage from './pages/AttendancePage';
+import ChatPage from './pages/ChatPage';
 import JoinMeeting from './pages/JoinMeeting';
+
 import Settings from './pages/Settings';
+import AuditLogs from './pages/AuditLogs';
 import Layout from './components/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
 
 import { AnimatePresence } from 'framer-motion';
 
 const ProtectedRoute = ({ children, allowedRoles }) => {
-  let user = null;
+  const { user, loading } = useUser();
   const token = localStorage.getItem('token');
   const location = useLocation();
 
-  try {
-    const userData = localStorage.getItem('user');
-    user = userData ? JSON.parse(userData) : null;
-  } catch (err) {
-    console.error('Invalid user data in localStorage', err);
-    user = null;
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-slate-50">
+        <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
   }
 
   if (!token || !user) {
@@ -43,15 +47,9 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
 };
 
 const RoleBasedRedirect = () => {
-    let user = null;
-    try {
-        const userData = localStorage.getItem('user');
-        user = userData ? JSON.parse(userData) : null;
-    } catch (err) {
-        console.error('Invalid user data in redirect', err);
-        user = null;
-    }
+    const { user, loading } = useUser();
 
+    if (loading) return null;
     if (!user) return <Navigate to="/login" />;
     
     const role = user.role?.toLowerCase();
@@ -80,8 +78,11 @@ function App() {
                <Route path="/leave" element={<LeaveTracker />} />
                <Route path="/meetings" element={<MeetingsPage />} />
                <Route path="/attendance" element={<AttendancePage />} />
+               <Route path="/chat" element={<ChatPage />} />
                <Route path="/meet/:meetingId" element={<JoinMeeting />} />
+
                <Route path="/settings" element={<Settings />} />
+               <Route path="/admin/logs" element={<ProtectedRoute allowedRoles={['admin']}><AuditLogs /></ProtectedRoute>} />
             </Route>
 
             <Route path="*" element={<Navigate to="/" replace />} />

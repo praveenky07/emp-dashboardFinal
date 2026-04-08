@@ -27,6 +27,9 @@ const emitUserDeleted = (io, payload) => emitEvent(io, 'userDeleted', payload);
 const emitStatsUpdated = (io, payload) => emitEvent(io, 'statsUpdated', payload);
 const emitActiveUsersUpdated = (io, payload) => emitEvent(io, 'activeUsersUpdated', payload);
 
+// PERFORMANCE
+const emitReviewSubmitted = (io, payload) => emitEvent(io, 'reviewSubmitted', payload);
+
 module.exports = {
     emitAttendanceStarted,
     emitAttendanceEnded,
@@ -42,5 +45,7 @@ module.exports = {
     emitUserCreated,
     emitUserDeleted,
     emitStatsUpdated,
-    emitActiveUsersUpdated
+    emitActiveUsersUpdated,
+    emitReviewSubmitted
 };
+

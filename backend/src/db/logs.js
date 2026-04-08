@@ -9,9 +9,16 @@ const initLogs = async () => {
         user_id INTEGER NOT NULL,
         action TEXT NOT NULL,
         metadata TEXT, -- JSON string
+        ip_address TEXT,
+        user_agent TEXT,
         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);
+    // Safe Migration
+    try {
+      await db.execute('ALTER TABLE activity_logs ADD COLUMN ip_address TEXT');
+      await db.execute('ALTER TABLE activity_logs ADD COLUMN user_agent TEXT');
+    } catch (e) {}
   } catch (error) {
     console.error('Error initializing activity logs:', error.message);
   }
@@ -19,11 +26,11 @@ const initLogs = async () => {
 
 initLogs();
 
-const logActivity = async (userId, action, metadata = {}) => {
+const logActivity = async (userId, action, metadata = {}, ip = null, ua = null) => {
   try {
     await db.execute({
-      sql: 'INSERT INTO activity_logs (user_id, action, metadata) VALUES (?, ?, ?)',
-      args: [userId, action, JSON.stringify(metadata)]
+      sql: 'INSERT INTO activity_logs (user_id, action, metadata, ip_address, user_agent) VALUES (?, ?, ?, ?, ?)',
+      args: [userId, action, JSON.stringify(metadata), ip, ua]
     });
   } catch (error) {
     console.error('Logging failed:', error.message);

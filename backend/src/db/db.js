@@ -213,9 +213,17 @@ const initDb = async () => {
         user_id INTEGER NOT NULL,
         action TEXT NOT NULL,
         metadata TEXT,
+        ip_address TEXT,
+        user_agent TEXT,
         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);
+
+    // Migration for logs
+    try {
+      await db.execute('ALTER TABLE activity_logs ADD COLUMN ip_address TEXT');
+      await db.execute('ALTER TABLE activity_logs ADD COLUMN user_agent TEXT');
+    } catch (e) { /* Col exists */ }
 
     await db.execute(`
       CREATE TABLE IF NOT EXISTS projects(
@@ -399,6 +407,92 @@ const initDb = async () => {
       )
     `);
 
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS performance_reviews(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        reviewer_id INTEGER NOT NULL,
+        rating INTEGER CHECK(rating BETWEEN 1 AND 5),
+        feedback TEXT,
+        tags TEXT, -- JSON string of tags
+        period TEXT NOT NULL, 
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(user_id) REFERENCES users(id),
+        FOREIGN KEY(reviewer_id) REFERENCES users(id)
+      )
+    `);
+
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS bonuses(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        employee_id INTEGER NOT NULL,
+        manager_id INTEGER NOT NULL,
+        amount REAL NOT NULL,
+        reason TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(employee_id) REFERENCES users(id),
+        FOREIGN KEY(manager_id) REFERENCES users(id)
+      )
+    `);
+
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS messages(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sender_id INTEGER NOT NULL,
+        receiver_id INTEGER NOT NULL,
+        message TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(sender_id) REFERENCES users(id),
+        FOREIGN KEY(receiver_id) REFERENCES users(id)
+      )
+    `);
+
+
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS group_messages(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        group_id TEXT NOT NULL,
+        sender_id INTEGER NOT NULL,
+        message TEXT NOT NULL,
+        file_url TEXT,
+        file_type TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(sender_id) REFERENCES users(id)
+      )
+    `);
+
+    // Safe migrations for file sharing
+    try {
+      await db.execute('ALTER TABLE messages ADD COLUMN file_url TEXT');
+      await db.execute('ALTER TABLE messages ADD COLUMN file_type TEXT');
+      console.log('Added file columns to messages');
+    } catch (e) {}
+
+    try {
+      await db.execute('ALTER TABLE group_messages ADD COLUMN file_url TEXT');
+      await db.execute('ALTER TABLE group_messages ADD COLUMN file_type TEXT');
+      console.log('Added file columns to group_messages');
+    } catch (e) {}
+
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS notifications(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        type TEXT NOT NULL,
+        message TEXT NOT NULL,
+        metadata TEXT,
+        is_read INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(user_id) REFERENCES users(id)
+      )
+    `);
+
+
+    try {
+      await db.execute('CREATE INDEX idx_perf_user ON performance_reviews(user_id)');
+      await db.execute('CREATE INDEX idx_perf_period ON performance_reviews(period)');
+    } catch (e) {}
+
 
 
     console.log('Tables created successfully');
@@ -417,38 +511,38 @@ const initDb = async () => {
     // Users (Force update for testing consistency)
     // README @emp.com users
     await db.execute({
-      sql: 'INSERT OR REPLACE INTO users (id, name, email, password, role) VALUES (?, ?, ?, ?, ?)',
+      sql: 'INSERT OR IGNORE INTO users (id, name, email, password, role) VALUES (?, ?, ?, ?, ?)',
       args: [1, 'System Admin', 'admin@emp.com', adminHash, 'admin']
     });
 
     await db.execute({
-      sql: 'INSERT OR REPLACE INTO users (id, name, email, password, role, team_id, manager_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      sql: 'INSERT OR IGNORE INTO users (id, name, email, password, role, team_id, manager_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
       args: [2, 'Team Lead', 'manager@emp.com', managerHash, 'manager', 1, 1]
     });
 
     await db.execute({
-      sql: 'INSERT OR REPLACE INTO users (id, name, email, password, role, team_id, manager_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      sql: 'INSERT OR IGNORE INTO users (id, name, email, password, role, team_id, manager_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
       args: [3, 'Product Engineer', 'employee@emp.com', employeeHash, 'employee', 1, 2]
     });
 
     // Original @test.com users (keeping for backwards compatibility with some tests)
     await db.execute({
-      sql: 'INSERT OR REPLACE INTO users (id, name, email, password, role) VALUES (?, ?, ?, ?, ?)',
+      sql: 'INSERT OR IGNORE INTO users (id, name, email, password, role) VALUES (?, ?, ?, ?, ?)',
       args: [11, 'Admin Test', 'admin@test.com', adminHash, 'admin']
     });
 
     await db.execute({
-      sql: 'INSERT OR REPLACE INTO users (id, name, email, password, role, manager_id) VALUES (?, ?, ?, ?, ?, ?)',
+      sql: 'INSERT OR IGNORE INTO users (id, name, email, password, role, manager_id) VALUES (?, ?, ?, ?, ?, ?)',
       args: [12, 'Manager Test', 'manager@test.com', managerHash, 'manager', 11]
     });
 
     await db.execute({
-      sql: 'INSERT OR REPLACE INTO users (id, name, email, password, role, manager_id) VALUES (?, ?, ?, ?, ?, ?)',
+      sql: 'INSERT OR IGNORE INTO users (id, name, email, password, role, manager_id) VALUES (?, ?, ?, ?, ?, ?)',
       args: [13, 'Employee Test', 'employee@test.com', employeeHash, 'employee', 12]
     });
 
     await db.execute({
-      sql: 'INSERT OR REPLACE INTO users (id, name, email, password, role, team_id, manager_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      sql: 'INSERT OR IGNORE INTO users (id, name, email, password, role, team_id, manager_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
       args: [4, 'HR Professional', 'hr@test.com', hrHash, 'hr', 2, 2]
     });
 
@@ -464,22 +558,22 @@ const initDb = async () => {
 
     // Employees (Link to Users)
     await db.execute({
-      sql: 'INSERT OR REPLACE INTO employees (id, user_id, name, role, department_id, employee_code) VALUES (?, ?, ?, ?, ?, ?)',
+      sql: 'INSERT OR IGNORE INTO employees (id, user_id, name, role, department_id, employee_code) VALUES (?, ?, ?, ?, ?, ?)',
       args: [1, 1, 'System Admin', 'admin', 1, 'EMP001']
     });
 
     await db.execute({
-      sql: 'INSERT OR REPLACE INTO employees (id, user_id, name, role, department_id, employee_code) VALUES (?, ?, ?, ?, ?, ?)',
+      sql: 'INSERT OR IGNORE INTO employees (id, user_id, name, role, department_id, employee_code) VALUES (?, ?, ?, ?, ?, ?)',
       args: [2, 2, 'Team Lead', 'manager', 1, 'EMP002']
     });
 
     await db.execute({
-      sql: 'INSERT OR REPLACE INTO employees (id, user_id, name, role, department_id, employee_code, salary) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      sql: 'INSERT OR IGNORE INTO employees (id, user_id, name, role, department_id, employee_code, salary) VALUES (?, ?, ?, ?, ?, ?, ?)',
       args: [3, 3, 'Product Engineer', 'employee', 1, 'EMP003', 60000]
     });
 
     await db.execute({
-      sql: 'INSERT OR REPLACE INTO employees (id, user_id, name, role, department_id, employee_code, salary) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      sql: 'INSERT OR IGNORE INTO employees (id, user_id, name, role, department_id, employee_code, salary) VALUES (?, ?, ?, ?, ?, ?, ?)',
       args: [4, 4, 'HR Professional', 'hr', 2, 'EMP004', 65000]
     });
 
@@ -572,6 +666,19 @@ const initDb = async () => {
           sql: "INSERT OR IGNORE INTO meetings (id, purpose, duration, category, created_by, participants, meeting_link, video_link, status, scheduled_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
           args: [`test-meeting-${u}-3`, 'Yesterday Sprint Refinement', 45, 'Brainstorming', u, '[]', `/meet/test-${u}-3`, `https://meet.jit.si/test-${u}-3`, 'scheduled', new Date(Date.now() - 86400000).toISOString()]
       });
+    }
+
+    // Performance Reviews Seeds
+    const perfReviews = [
+        [3, 2, 5, 'Highly efficient and consistent. Exceeded all KPIs for the quarter.', '["High Impact", "Top Performer"]', 'Q1 2026'],
+        [3, 2, 4, 'Great teamwork and technical execution on the Mobile Alpha project.', '["Technical Excellence"]', 'March 2026'],
+        [2, 1, 5, 'Exceptional leadership of the Frontend Squad. Great mentorship.', '["Leadership", "Strategy"]', 'Q1 2026']
+    ];
+    for (const r of perfReviews) {
+        await db.execute({
+            sql: "INSERT OR IGNORE INTO performance_reviews (user_id, reviewer_id, rating, feedback, tags, period) VALUES (?, ?, ?, ?, ?, ?)",
+            args: r
+        });
     }
 
     console.log('[SEED] Master records and activity logs initialized.');

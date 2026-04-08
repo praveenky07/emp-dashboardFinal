@@ -40,8 +40,12 @@ import {
   Users,
   Film,
   Video as VideoIcon,
-  Zap
+  Zap,
+  ShieldAlert,
+  Coins,
+  Star
 } from 'lucide-react';
+
 import { motion, AnimatePresence } from 'framer-motion';
 
 // Defined locally to prevent ReferenceError: SnapshotCard is not defined
@@ -61,6 +65,7 @@ const SnapshotCard = ({ icon: Icon, label, value, color, bgColor, onClick }) => 
 );
 
 const AdminPanel = () => {
+    const navigate = useNavigate();
     const [users, setUsers] = useState([]);
     const [logs, setLogs] = useState([]);
     const [settings, setSettings] = useState([]);
@@ -71,6 +76,7 @@ const AdminPanel = () => {
     const [leaveBalance, setLeaveBalance] = useState({ total_leaves: 0, used_leaves: 0, remaining_leaves: 0 });
     const [allLeaveBalances, setAllLeaveBalances] = useState([]);
     const [allAttendance, setAllAttendance] = useState([]);
+    const [allReviews, setAllReviews] = useState([]);
     
     // UI state
     const [activeModal, setActiveModal] = useState(null); // 'addUser', 'editUser', 'usersList', 'sessions', 'storage', 'metrics'
@@ -78,6 +84,8 @@ const AdminPanel = () => {
     const [editUser, setEditUser] = useState(null);
     const [departments, setDepartments] = useState([]);
     const [salaryHistory, setSalaryHistory] = useState([]);
+    const [adjustmentForm, setAdjustmentForm] = useState({ user_id: '', amount: '', type: 'Bonus', description: '', month: new Date().toLocaleString('en-US', { month: 'long' }), year: new Date().getFullYear() });
+    const [submittingAdj, setSubmittingAdj] = useState(false);
     const [deptToEdit, setDeptToEdit] = useState(null);
     const [newDeptName, setNewDeptName] = useState('');
     const [backingUp, setBackingUp] = useState(false);
@@ -94,7 +102,8 @@ const AdminPanel = () => {
                 api.get('/leave/balance/my'),
                 api.get('/admin/stats'),
                 api.get('/attendance/admin'),
-                api.get('/leave/balance/all')
+                api.get('/leave/balance/all'),
+                api.get('/performance/team-reviews')
             ]);
             
             if (results[0].status === 'fulfilled') setUsers(Array.isArray(results[0].value.data) ? results[0].value.data : []);
@@ -106,6 +115,8 @@ const AdminPanel = () => {
             if (results[6].status === 'fulfilled') setAdminStats(results[6].value.data || { totalUsers: 0, activeSessions: 0, pendingLeaves: 0, totalMeetings: 0, totalLeaves: 0 });
             if (results[7].status === 'fulfilled') setAllAttendance(results[7].value.data || []);
             if (results[8].status === 'fulfilled') setAllLeaveBalances(results[8].value.data || []);
+            if (results[9].status === 'fulfilled') setAllReviews(results[9].value.data || []);
+
             
             // Log any failures
             results.forEach((res, i) => {
@@ -266,7 +277,9 @@ const AdminPanel = () => {
           <SnapshotCard icon={Calendar} label="Remaining Leave" value={leaveBalance.remaining_leaves || 0} color="text-rose-500" bgColor="bg-rose-50" onClick={() => navigate('/leave')} />
           <SnapshotCard icon={Users} label="Online Users" value={`${onlineUsers} Active`} color="text-emerald-500" bgColor="bg-emerald-50" onClick={() => {}} />
           <SnapshotCard icon={Database} label="System Balances" value={allLeaveBalances.length} color="text-indigo-500" bgColor="bg-indigo-50" onClick={() => setActiveModal('allLeaveBalances')} />
+          <SnapshotCard icon={Star} label="Global Reviews" value={allReviews.length} color="text-amber-500" bgColor="bg-amber-50" onClick={() => setActiveModal('allReviews')} />
           <SnapshotCard icon={Calendar} label="All Attendance" value={allAttendance.length} color="text-emerald-500" bgColor="bg-emerald-50" onClick={() => setActiveModal('allAttendance')} />
+
           <button 
             onClick={() => navigate('/meetings')}
             className="bg-white p-5 rounded-2xl border border-[#e5e7eb] flex items-center justify-between group hover:border-indigo-500 hover:shadow-md transition-all cursor-pointer"
@@ -298,6 +311,13 @@ const AdminPanel = () => {
             >
                  {backingUp ? <div className="w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" /> : <Database size={16} />}
                  <span>Backup</span>
+            </button>
+             <button 
+                onClick={() => navigate('/admin/logs')}
+                className="px-5 py-3 bg-white border border-[#e5e7eb] rounded-xl font-bold text-[#374151] hover:bg-slate-50 transition-all shadow-sm flex items-center gap-2"
+            >
+                 <ShieldAlert size={16} className="text-indigo-600" />
+                 <span>Audit Trail</span>
             </button>
              <button 
                 onClick={() => setActiveModal('deptMgmt')}
@@ -515,6 +535,7 @@ const AdminPanel = () => {
                                     <td className="py-4 px-4 text-sm font-bold text-[#111827]">${(user.salary || 0).toLocaleString()}</td>
                                     <td className="py-4 px-4 text-right">
                                         <div className="flex items-center justify-end gap-1">
+                                            <button onClick={() => { setAdjustmentForm({ ...adjustmentForm, user_id: user.id }); setActiveModal('adjustment'); }} className="p-2 text-[#9ca3af] hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all" title="Add Adjustment"><Coins size={16} /></button>
                                             <button onClick={() => fetchSalaryHistory(user.id)} className="p-2 text-[#9ca3af] hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all" title="Salary History"><History size={16} /></button>
                                             <button onClick={() => { setEditUser(user); setActiveModal('editUser'); }} className="p-2 text-[#9ca3af] hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all" title="Edit"><Edit3 size={16} /></button>
                                             <button onClick={() => handleDeleteUser(user.id)} className="p-2 text-[#9ca3af] hover:text-red-500 hover:bg-red-50 rounded-lg transition-all" title="Delete"><Trash2 size={16} /></button>
@@ -826,58 +847,122 @@ const AdminPanel = () => {
                 </div>
             </DetailModal>
 
-            <DetailModal isOpen={activeModal === 'salaryAdjustment'} onClose={() => setActiveModal(null)} title="Audit Financial Adjustment">
-                <form onSubmit={handleAddAdjustment} className="space-y-5">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                           <div className="space-y-1.5 md:col-span-2">
-                                <label className="text-xs font-bold text-[#374151] ml-1">Target Employee</label>
-                                <select 
-                                  value={newAdjustment.user_id} 
-                                  onChange={e => setNewAdjustment({...newAdjustment, user_id: e.target.value})} 
-                                  className="w-full px-4 py-3 bg-[#fcfdfe] border border-[#e5e7eb] rounded-xl text-sm font-bold text-[#374151] focus:border-indigo-500 outline-none transition-all cursor-pointer"
-                                  required
-                                >
-                                   <option value="" disabled>Select User</option>
-                                   {users.map(u => (
-                                       <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
-                                   ))}
-                                </select>
-                           </div>
-                           <div className="space-y-1.5">
-                                <label className="text-xs font-bold text-[#374151] ml-1">Amount ($)</label>
-                                <input type="number" value={newAdjustment.amount} onChange={e => setNewAdjustment({...newAdjustment, amount: e.target.value})} className="w-full px-4 py-3 bg-[#fcfdfe] border border-[#e5e7eb] rounded-xl text-sm font-medium focus:border-indigo-500 outline-none" required />
-                           </div>
-                           <div className="space-y-1.5">
-                                <label className="text-xs font-bold text-[#374151] ml-1">Adjustment Type</label>
-                                <select 
-                                  value={newAdjustment.type} 
-                                  onChange={e => setNewAdjustment({...newAdjustment, type: e.target.value})} 
-                                  className="w-full px-4 py-3 bg-[#fcfdfe] border border-[#e5e7eb] rounded-xl text-sm font-bold text-[#374151] focus:border-indigo-500 outline-none"
-                                  required
-                                >
-                                   <option value="bonus">Performance Bonus</option>
-                                   <option value="incentive">Commission / Incentive</option>
-                                   <option value="deduction">Recovery / Deduction</option>
-                                   <option value="other">Miscellaneous</option>
-                                </select>
-                           </div>
-                           <div className="space-y-1.5 md:col-span-2">
-                                <label className="text-xs font-bold text-[#374151] ml-1">Audit Description</label>
-                                <textarea 
-                                    value={newAdjustment.description} 
-                                    onChange={e => setNewAdjustment({...newAdjustment, description: e.target.value})} 
-                                    className="w-full px-4 py-3 bg-[#fcfdfe] border border-[#e5e7eb] rounded-xl text-sm font-medium focus:border-indigo-500 outline-none h-24 resize-none"
-                                    placeholder="Provide context for this financial change..."
-                                    required
-                                />
-                           </div>
+            {/* Financial Adjustment Modal */}
+            <DetailModal isOpen={activeModal === 'adjustment'} onClose={() => setActiveModal(null)} title="Author Fiscal Adjustment">
+                 <form onSubmit={handleAddAdjustment} className="space-y-6">
+                    <div className="bg-emerald-50 p-6 rounded-[32px] border border-emerald-100 flex items-center gap-4">
+                        <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-emerald-600 font-extrabold shadow-sm border border-emerald-100">
+                             {users.find(u => u.id === adjustmentForm.user_id)?.name?.[0] || '?'}
+                        </div>
+                        <div>
+                             <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Target Personnel</p>
+                             <p className="text-lg font-black text-slate-900 leading-none">{users.find(u => u.id === adjustmentForm.user_id)?.name || 'Employee'}</p>
+                        </div>
                     </div>
-                    <button type="submit" className="w-full bg-indigo-600 text-white py-4 rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-md shadow-indigo-100 flex items-center justify-center gap-2 mt-4">
-                        Confirm Audit Entry
+
+                    <div className="grid grid-cols-2 gap-4">
+                         <div className="space-y-1.5">
+                            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider ml-1">Type</label>
+                            <select 
+                                value={adjustmentForm.type}
+                                onChange={e => setAdjustmentForm({...adjustmentForm, type: e.target.value})}
+                                className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-black focus:border-indigo-600 outline-none"
+                            >
+                                <option value="Bonus">Credit / Bonus</option>
+                                <option value="Deduction">Debit / Deduction</option>
+                            </select>
+                         </div>
+                         <div className="space-y-1.5">
+                            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider ml-1">Amount ($)</label>
+                            <input 
+                                type="number" 
+                                value={adjustmentForm.amount}
+                                onChange={e => setAdjustmentForm({...adjustmentForm, amount: e.target.value})}
+                                className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-black focus:border-indigo-600 outline-none"
+                                placeholder="500.00"
+                                required
+                            />
+                         </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                         <div className="space-y-1.5">
+                            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider ml-1">Month</label>
+                            <select 
+                                value={adjustmentForm.month}
+                                onChange={e => setAdjustmentForm({...adjustmentForm, month: e.target.value})}
+                                className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-black focus:border-indigo-600 outline-none"
+                            >
+                                {['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'].map(m => (
+                                    <option key={m} value={m}>{m}</option>
+                                ))}
+                            </select>
+                         </div>
+                         <div className="space-y-1.5">
+                            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider ml-1">Year</label>
+                            <input 
+                                type="number" 
+                                value={adjustmentForm.year}
+                                onChange={e => setAdjustmentForm({...adjustmentForm, year: e.target.value})}
+                                className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-black focus:border-indigo-600 outline-none"
+                            />
+                         </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                         <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider ml-1">Justification</label>
+                         <textarea 
+                            value={adjustmentForm.description}
+                            onChange={e => setAdjustmentForm({...adjustmentForm, description: e.target.value})}
+                            className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-3xl text-sm font-bold focus:border-indigo-600 outline-none h-24 resize-none"
+                            placeholder="Reason for adjustment (e.g., Performance Bonus, Equipment Deduction)..."
+                            required
+                         />
+                    </div>
+
+                    <button 
+                        type="submit" 
+                        disabled={submittingAdj}
+                        className="w-full bg-slate-900 text-white py-5 rounded-3xl font-black uppercase tracking-[0.2em] shadow-2xl hover:bg-black active:scale-[0.98] transition-all flex items-center justify-center gap-3"
+                    >
+                        {submittingAdj ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <ShieldCheck size={20} />}
+                        Confirm Fiscal Entry
                     </button>
-                </form>
+                 </form>
+            </DetailModal>
+
+            {/* All Reviews Modal */}
+            <DetailModal isOpen={activeModal === 'allReviews'} onClose={() => setActiveModal(null)} title="Global Performance Repository">
+                <div className="space-y-4">
+                    {allReviews.map(review => (
+                        <div key={review.id} className="p-6 bg-slate-50 rounded-[32px] border border-slate-100 flex items-center justify-between group hover:border-indigo-600 transition-all">
+                             <div className="flex items-center gap-4">
+                                  <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center font-black text-indigo-600 shadow-sm border border-indigo-50">
+                                      {review.employee_name[0]}
+                                  </div>
+                                  <div>
+                                      <p className="font-black text-slate-900 group-hover:text-indigo-600 transition-colors uppercase tracking-tight">{review.employee_name}</p>
+                                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Reviewer: {review.reviewer_name}</p>
+                                  </div>
+                             </div>
+                             <div className="flex items-center gap-6">
+                                  <div className="text-center">
+                                      <p className="text-xl font-black text-slate-900 tracking-tighter">{review.rating}<span className="text-[10px] text-slate-400">/5</span></p>
+                                      <p className="text-[9px] font-black text-indigo-500 uppercase tracking-widest">Score</p>
+                                  </div>
+                                  <div className="text-right">
+                                      <p className="text-sm font-black text-slate-900">${(review.bonus_amount || 0).toLocaleString()}</p>
+                                      <p className="text-[9px] font-black text-emerald-500 uppercase tracking-widest">Bonus</p>
+                                  </div>
+                                  <span className="px-3 py-1 bg-white border border-slate-100 rounded-full text-[9px] font-black text-slate-400 uppercase tracking-widest">{review.period}</span>
+                             </div>
+                        </div>
+                    ))}
+                    {allReviews.length === 0 && <p className="text-center py-20 bg-slate-50 rounded-[40px] border border-slate-100 col-span-full font-black text-slate-400 uppercase tracking-widest">No performance records found</p>}
+                </div>
             </DetailModal>
         </div>
+
     );
 };
 

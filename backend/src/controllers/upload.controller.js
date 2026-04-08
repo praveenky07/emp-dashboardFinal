@@ -52,3 +52,40 @@ exports.uploadProfileImage = async (req, res) => {
         res.status(500).json({ error: "Upload failed" });
     }
 };
+
+exports.uploadFile = async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ error: "No file uploaded" });
+        }
+
+        console.log(`[UPLOAD] Processing generic file: ${req.file.originalname}`);
+
+        let fileUrl = '';
+        const hasCloudinary = process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_KEY !== 'your_key';
+
+        const b64 = Buffer.from(req.file.buffer).toString("base64");
+        const dataURI = "data:" + req.file.mimetype + ";base64," + b64;
+
+        if (hasCloudinary) {
+            // Upload to Cloudinary (resource_type auto handles PDF/images/docs)
+            const result = await cloudinary.uploader.upload(dataURI, {
+                folder: 'emp_pro_attachments',
+                resource_type: "auto" 
+            });
+            fileUrl = result.secure_url;
+        } else {
+            // Fallback for demo: base64
+            fileUrl = dataURI;
+        }
+
+        return res.json({
+            fileUrl,
+            fileName: req.file.originalname,
+            fileType: req.file.mimetype
+        });
+    } catch (error) {
+        console.error("[UPLOAD] General file upload error:", error);
+        res.status(500).json({ error: "File upload failed" });
+    }
+};

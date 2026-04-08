@@ -27,7 +27,8 @@ import {
   ShieldCheck,
   Gift,
   FileText,
-  Target
+  Target,
+  History
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -41,19 +42,12 @@ import {
 } from 'recharts';
 import { motion, AnimatePresence } from 'framer-motion';
 import LeaveForm from '../components/LeaveForm';
+import { useUser } from '../context/UserContext';
+import { SkeletonStat, SkeletonCard } from '../components/Skeleton';
 
 const EmployeeDashboard = () => {
+    const { user } = useUser();
     const [status, setStatus] = useState({ active: false, onBreak: false });
-    const getUser = () => {
-        try {
-            const userData = localStorage.getItem('user');
-            return userData ? JSON.parse(userData) : { name: 'Guest', role: 'employee' };
-        } catch (e) {
-            console.error('Safe parse error in Dashboard', e);
-            return { name: 'Guest', role: 'employee' };
-        }
-    };
-    const user = getUser();
     
     const [timer, setTimer] = useState(0);
     const [stats, setStats] = useState({ 
@@ -71,7 +65,8 @@ const EmployeeDashboard = () => {
     const [tasks, setTasks] = useState([]);
     
     // UI state
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(true);
+    const [actionLoading, setActionLoading] = useState(false);
     
     // Modal states
     const [activeModal, setActiveModal] = useState(null); // 'meeting', 'leave', 'productivity', 'workHours', 'breaks', 'meetingsList'
@@ -82,10 +77,11 @@ const EmployeeDashboard = () => {
     const [benefitsCount, setBenefitsCount] = useState(0);
 
     const fetchData = async () => {
+        if (!loading) setLoading(true);
         try {
             const [statusRes, statsRes, prodRes, leavesRes, balanceRes, payrollRes, taxRes, benefitsRes, attLogsRes] = await Promise.all([
                 api.get('/time/status'),
-                api.get('/time/stats'), // still useful for breaks/meetings
+                api.get('/time/stats'), 
                 api.get('/time/productivity'),
                 api.get('/leave/my'),
                 api.get('/leave/balance/my'),
@@ -129,6 +125,8 @@ const EmployeeDashboard = () => {
             }
         } catch (e) {
             console.error('Error fetching dashboard data', e);
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -286,148 +284,181 @@ const EmployeeDashboard = () => {
 
     const navigate = useNavigate();
 
+    if (loading) {
+        return (
+            <div className="space-y-10">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    {[1, 2, 3, 4].map(i => <SkeletonStat key={i} />)}
+                </div>
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    <div className="lg:col-span-2 h-[450px] skeleton rounded-[32px]" />
+                    <div className="flex flex-col gap-6">
+                        <div className="h-52 skeleton rounded-[32px]" />
+                    </div>
+                </div>
+                <div className="h-72 skeleton rounded-[32px]" />
+            </div>
+        );
+    }
+
     return (
         <div className="space-y-10 animate-in fade-in duration-700">
             {/* Quick Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard 
-            icon={CalendarDays} 
-            label="Attendance History" 
-            value={`${workLogs?.filter(l => l.clock_out)?.length || 0} / ${new Date().getDate()} Days`} 
-            color="text-emerald-600"
-            bgColor="bg-emerald-50"
-            onClick={() => navigate('/attendance')}
-            trend={`${workLogs?.length > 0 ? ((workLogs.filter(l => l.status === 'Present').length / workLogs.length) * 100).toFixed(0) : 0}% Present`}
-        />
-        <StatCard 
-            icon={Timer} 
-            label="Avg. Daily Hours" 
-            value={`${workLogs?.length > 0 ? (workLogs.reduce((acc, l) => acc + Number(l.total_hours || 0), 0) / workLogs.length).toFixed(1) : '0.0'} hrs`} 
-            color="text-indigo-600"
-            bgColor="bg-indigo-50"
-            onClick={() => navigate('/attendance')}
-            trend="Target: 8.0h"
-        />
-        <StatCard 
-            icon={CalendarCheck2} 
-            label="Leave Balance" 
-            value={`${leaveBalances?.remaining_leaves || 0} / ${leaveBalances?.total_leaves || 18} Days`} 
-            color="text-purple-600"
-            bgColor="bg-purple-50"
-            onClick={() => navigate('/leave')}
-        />
-        {user.role?.toLowerCase() === 'employee' ? (
-            <button 
-                onClick={() => setActiveModal('leave')}
-                className="p-6 bg-white border border-[#e5e7eb] rounded-2xl shadow-sm flex items-center justify-between group hover:border-indigo-500 hover:shadow-md transition-all cursor-pointer"
-            >
-                <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-indigo-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-indigo-100 group-hover:scale-105 transition-all">
-                        <Plus size={24} />
-                    </div>
-                    <div>
-                        <p className="text-[#6b7280] text-[11px] font-bold uppercase tracking-wider leading-none mb-1 text-left">Quick Action</p>
-                        <p className="text-sm font-bold text-[#111827]">Apply Leave</p>
-                    </div>
-                </div>
-                <ArrowRight size={16} className="text-[#9ca3af] group-hover:text-indigo-600 group-hover:translate-x-1 transition-all" />
-            </button>
-        ) : (
-            <StatCard 
-                icon={Users} 
-                label="Meetings Hub" 
-                value={stats.totalMeetings || 0} 
-                color="text-blue-600"
-                bgColor="bg-blue-50"
-                onClick={() => navigate('/meetings')}Trend="Team Capacity"
-            />
-        )}
-      </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <StatCard 
+                    icon={CalendarDays} 
+                    label="Attendance History" 
+                    value={`${workLogs?.filter(l => l.clock_out)?.length || 0} / ${new Date().getDate()} Days`} 
+                    color="text-emerald-600"
+                    bgColor="bg-emerald-50"
+                    onClick={() => navigate('/attendance')}
+                    trend={`${workLogs?.length > 0 ? ((workLogs.filter(l => l.status === 'Present').length / workLogs.length) * 100).toFixed(0) : 0}% Present`}
+                />
+                <StatCard 
+                    icon={Timer} 
+                    label="Avg. Daily Hours" 
+                    value={`${workLogs?.length > 0 ? (workLogs.reduce((acc, l) => acc + Number(l.total_hours || 0), 0) / workLogs.length).toFixed(1) : '0.0'} hrs`} 
+                    color="text-indigo-600"
+                    bgColor="bg-indigo-50"
+                    onClick={() => navigate('/attendance')}
+                    trend="Target: 8.0h"
+                />
+                <StatCard 
+                    icon={CalendarCheck2} 
+                    label="Leave Balance" 
+                    value={`${leaveBalances?.remaining_leaves || 0} / ${leaveBalances?.total_leaves || 18} Days`} 
+                    color="text-purple-600"
+                    bgColor="bg-purple-50"
+                    onClick={() => navigate('/leave')}
+                />
+                {user?.role?.toLowerCase() === 'employee' ? (
+                    <button 
+                        onClick={() => setActiveModal('leave')}
+                        className="premium-card p-6 flex items-center justify-between group cursor-pointer"
+                    >
+                        <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 bg-indigo-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-indigo-100 group-hover:scale-105 transition-all">
+                                <Plus size={24} />
+                            </div>
+                            <div>
+                                <p className="text-[#6b7280] text-[11px] font-bold uppercase tracking-wider leading-none mb-1 text-left">Quick Action</p>
+                                <p className="text-sm font-bold text-[#111827]">Apply Leave</p>
+                            </div>
+                        </div>
+                        <ArrowRight size={16} className="text-[#9ca3af] group-hover:text-indigo-600 group-hover:translate-x-1 transition-all" />
+                    </button>
+                ) : (
+                    <StatCard 
+                        icon={Users} 
+                        label="Meetings Hub" 
+                        value={stats.totalMeetings || 0} 
+                        color="text-blue-600"
+                        bgColor="bg-blue-50"
+                        onClick={() => navigate('/meetings')}
+                        trend="Team Capacity"
+                    />
+                )}
+            </div>
 
             {/* Main Section */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 {/* Timer Section */}
-        <div className="lg:col-span-2 bg-white p-8 rounded-[24px] border border-[#e5e7eb] shadow-sm flex flex-col items-center justify-center relative overflow-hidden">
-          <div className="relative z-10 flex flex-col items-center w-full text-center">
-            <div className="flex items-center gap-2 mb-6">
-              <div className={`px-4 py-1 rounded-full flex items-center gap-2 border ${status.active ? 'bg-emerald-50 border-emerald-100 text-emerald-700' : 'bg-slate-50 border-slate-100 text-[#6b7280]'}`}>
-                <div className={`w-1.5 h-1.5 rounded-full ${status.active ? 'bg-emerald-600 animate-pulse' : 'bg-slate-400'}`} />
-                <span className="text-[11px] font-bold uppercase tracking-wider">{status.active ? 'Active Session' : 'Shift Offline'}</span>
-              </div>
-            </div>
+                <div className="lg:col-span-2 bg-white p-10 rounded-[32px] border border-slate-200 shadow-sm flex flex-col items-center justify-center relative overflow-hidden group">
+                    <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-50/50 rounded-full -mr-32 -mt-32 blur-3xl transition-all group-hover:bg-indigo-100/50" />
+                    
+                    <div className="relative z-10 flex flex-col items-center w-full text-center">
+                        <div className="flex items-center gap-2 mb-8">
+                            <div className={`px-4 py-1.5 rounded-full flex items-center gap-2 border ${status.active ? 'bg-emerald-50 border-emerald-100 text-emerald-700' : 'bg-slate-50 border-slate-100 text-[#6b7280]'}`}>
+                                <div className={`w-2 h-2 rounded-full ${status.active ? 'bg-emerald-600 animate-pulse' : 'bg-slate-400'}`} />
+                                <span className="text-[10px] font-black uppercase tracking-widest">{status.active ? 'Active Session' : 'Shift Offline'}</span>
+                            </div>
+                        </div>
 
-            <h2 className="text-base font-bold text-[#111827] mb-8 flex items-center gap-2 uppercase tracking-wider">
-               <Clock size={16} className="text-indigo-600" /> Professional Continuity Timer
-            </h2>
+                        <h2 className="text-sm font-black text-slate-400 mb-10 uppercase tracking-[0.2em] flex items-center gap-3">
+                            <Clock size={16} className="text-indigo-600" /> Professional Continuity Timer
+                        </h2>
 
-            <div className="text-8xl md:text-9xl font-bold text-[#111827] mb-10 tabular-nums tracking-tighter leading-none select-none">
-              {formatTime(timer)}
-            </div>
+                        <div className="text-8xl md:text-9xl font-black text-slate-900 mb-12 tabular-nums tracking-tighter leading-none select-none drop-shadow-sm">
+                            {formatTime(timer)}
+                        </div>
 
-            <div className="flex flex-wrap justify-center gap-4 w-full max-w-md">
-              {!status.active ? (
-                <button 
-                  onClick={handleStartWork}
-                  disabled={loading}
-                  className="w-full py-4 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-100 group"
-                >
-                  {loading ? <Loader2 className="animate-spin" size={20} /> : <Play size={20} className="fill-current" />}
-                  <span className="text-lg">Commence Day Shift</span>
-                  <ArrowRight size={18} className="ml-1 group-hover:translate-x-1 transition-transform" />
-                </button>
-              ) : (
-                <>
-                  <button 
-                    onClick={() => status.onBreak ? handleToggleBreak() : setActiveModal('breakType')}
-                    disabled={loading}
-                    className={`flex-1 min-w-[150px] py-4 rounded-xl font-bold active:scale-[0.98] transition-all flex items-center justify-center gap-2 border 
-                      ${status.onBreak 
-                        ? 'bg-emerald-600 border-emerald-600 text-white shadow-md shadow-emerald-100' 
-                        : 'bg-white border-[#e5e7eb] text-[#374151] hover:bg-slate-50'
-                      }
-                    `}
-                  >
-                    <Coffee size={18} />
-                    <span>{status.onBreak ? `Resume Work` : 'Take Break'}</span>
-                  </button>
-                  <button 
-                    onClick={handleStopWork}
-                    disabled={loading}
-                    className="flex-1 min-w-[150px] py-4 bg-[#111827] text-white rounded-xl font-bold hover:bg-black active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-md shadow-slate-100"
-                  >
-                    <Square size={16} className="fill-current" />
-                    <span>End Shift</span>
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
+                        <div className="flex flex-wrap justify-center gap-4 w-full max-w-lg">
+                            {!status.active ? (
+                                <button 
+                                    onClick={handleStartWork}
+                                    disabled={actionLoading}
+                                    className="premium-button-indigo w-full text-lg group py-6"
+                                >
+                                    {actionLoading ? <Loader2 className="animate-spin" size={24} /> : <Play size={24} className="fill-current" />}
+                                    <span>Commence Day Shift</span>
+                                    <ArrowRight size={20} className="ml-1 group-hover:translate-x-1 transition-transform" />
+                                </button>
+                            ) : (
+                                <>
+                                    <button 
+                                        onClick={() => status.onBreak ? handleToggleBreak() : setActiveModal('breakType')}
+                                        disabled={actionLoading}
+                                        className={`flex-1 py-5 rounded-2xl font-bold transition-all flex items-center justify-center gap-2 border-2 
+                                            ${status.onBreak 
+                                                ? 'bg-emerald-600 border-emerald-600 text-white shadow-lg shadow-emerald-100' 
+                                                : 'bg-white border-slate-200 text-slate-700 hover:border-indigo-600 hover:text-indigo-600'
+                                            }
+                                        `}
+                                    >
+                                        <Coffee size={20} />
+                                        <span className="text-lg">{status.onBreak ? `Resume Work` : 'Take Break'}</span>
+                                    </button>
+                                    <button 
+                                        onClick={handleStopWork}
+                                        disabled={actionLoading}
+                                        className="flex-1 py-5 premium-button-primary"
+                                    >
+                                        <Square size={18} className="fill-current" />
+                                        <span className="text-lg">End Shift</span>
+                                    </button>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                </div>
 
-        {/* Right Cards - now correctly inside the lg:grid-cols-3 parent */}
-        <div className="flex flex-col gap-6">
-          <button 
-            onClick={() => setActiveModal('productivity')}
-            className="bg-white p-8 rounded-[24px] border border-[#e5e7eb] shadow-sm flex flex-col justify-between h-52 group cursor-pointer text-left hover:border-indigo-500 hover:shadow-md transition-all"
-          >
-            <div className="flex justify-between items-start">
-              <div className="w-12 h-12 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-all">
-                <Zap size={24} />
-              </div>
-              <span className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 group-hover:bg-indigo-600 group-hover:text-white transition-all">
-                <TrendingUp size={12} /> Live Score
-              </span>
+                {/* Right Cards */}
+                <div className="flex flex-col gap-6">
+                    <button 
+                        onClick={() => setActiveModal('productivity')}
+                        className="premium-card p-8 flex flex-col justify-between h-52 group text-left"
+                    >
+                        <div className="flex justify-between items-start">
+                            <div className="w-12 h-12 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-all">
+                                <Zap size={24} />
+                            </div>
+                            <span className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full text-[10px] font-black uppercase tracking-widest flex items-center gap-1 group-hover:bg-indigo-600 group-hover:text-white transition-all">
+                                <TrendingUp size={12} /> Live Score
+                            </span>
+                        </div>
+                        <div>
+                            <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-1">Productivity Index</p>
+                            <h3 className="text-4xl font-black text-slate-900 tabular-nums tracking-tight">{productivity.score}%</h3>
+                        </div>
+                        <div className="w-full h-1.5 bg-slate-100 rounded-full mt-2 overflow-hidden">
+                            <motion.div initial={{ width: 0 }} animate={{ width: `${productivity.score}%` }} className="h-full bg-indigo-600 rounded-full shadow-[0_0_8px_rgba(79,70,229,0.5)]" />
+                        </div>
+                    </button>
+                    
+                    <div className="premium-card p-8 flex-1 flex flex-col justify-center gap-2">
+                        <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">Active Focus</p>
+                        <h4 className="text-lg font-bold text-slate-900 leading-tight">Engineering Workspace Alpha</h4>
+                        <div className="flex items-center gap-2 mt-4">
+                            <div className="flex -space-x-2">
+                                {[1,2,3].map(i => (
+                                    <div key={i} className="w-8 h-8 rounded-full border-2 border-white bg-slate-200 flex items-center justify-center text-[10px] font-bold">U{i}</div>
+                                ))}
+                            </div>
+                            <span className="text-xs font-bold text-slate-500">+12 Others</span>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <div>
-              <p className="text-[#6b7280] text-[11px] font-bold uppercase tracking-wider mb-1">Productivity Index</p>
-              <h3 className="text-4xl font-bold text-[#111827] tabular-nums tracking-tight">{productivity.score}%</h3>
-            </div>
-            <div className="w-full h-1.5 bg-slate-100 rounded-full mt-2 overflow-hidden">
-               <motion.div initial={{ width: 0 }} animate={{ width: `${productivity.score}%` }} className="h-full bg-indigo-600 rounded-full" />
-            </div>
-          </button>
-        </div>
-      </div>
 
       {/* Performance Chart */}
       <div className="bg-white p-8 rounded-[24px] border border-[#e5e7eb] shadow-sm">
@@ -573,40 +604,74 @@ const EmployeeDashboard = () => {
         </div>
             </div>
 
-            {/* Removed redundant history tables from dashboard for UX clarity - moved to dedicated pages */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <button 
-          onClick={() => navigate('/attendance')}
-          className="p-5 bg-white border border-[#e5e7eb] rounded-2xl flex items-center justify-between group hover:border-indigo-500 hover:shadow-md transition-all"
-        >
-          <div className="flex items-center gap-4">
-            <div className="w-10 h-10 bg-emerald-50 rounded-xl flex items-center justify-center text-emerald-600">
-              <CalendarDays size={20} />
+            {/* Work Logs Section */}
+            <div className="premium-card overflow-hidden">
+                <div className="p-8 border-b border-slate-100 flex items-center justify-between">
+                    <div>
+                        <h2 className="text-xl font-black text-slate-900 tracking-tight">Recent Sessions</h2>
+                        <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">Clock activity & sessions</p>
+                    </div>
+                    <button onClick={() => navigate('/attendance')} className="text-[10px] font-black uppercase tracking-widest text-indigo-600 hover:text-indigo-700 flex items-center gap-2 bg-indigo-50 px-4 py-2 rounded-full transition-all">
+                        Full Audit Trail <ArrowRight size={12} />
+                    </button>
+                </div>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                        <thead>
+                            <tr className="bg-slate-50/50">
+                                <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Date</th>
+                                <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Clock In</th>
+                                <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Clock Out</th>
+                                <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Duration</th>
+                                <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-50">
+                            {workLogs.slice(0, 5).map((log, idx) => (
+                                <tr key={idx} className="hover:bg-slate-50/50 transition-colors group">
+                                    <td className="px-8 py-5 text-sm font-bold text-slate-600">{new Date(log.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</td>
+                                    <td className="px-8 py-5">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                            <span className="text-sm font-black text-slate-900">{log.clock_in}</span>
+                                        </div>
+                                    </td>
+                                    <td className="px-8 py-5">
+                                        {log.clock_out ? (
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                                                <span className="text-sm font-black text-slate-900">{log.clock_out}</span>
+                                            </div>
+                                        ) : (
+                                            <span className="px-3 py-1 bg-amber-50 text-amber-600 rounded-lg text-[10px] font-black uppercase tracking-widest">In Progress</span>
+                                        )}
+                                    </td>
+                                    <td className="px-8 py-5 text-sm font-black text-slate-900 text-right">{log.total_hours ? `${Number(log.total_hours).toFixed(2)}h` : '--'}</td>
+                                    <td className="px-8 py-5 text-right">
+                                        <span className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${
+                                            log.status === 'Present' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'
+                                        }`}>
+                                            {log.status}
+                                        </span>
+                                    </td>
+                                </tr>
+                            ))}
+                            {workLogs.length === 0 && (
+                                <tr>
+                                    <td colSpan={5} className="px-8 py-20 text-center">
+                                        <div className="flex flex-col items-center gap-3">
+                                            <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center text-slate-300">
+                                                <History size={32} />
+                                            </div>
+                                            <p className="text-sm font-black text-slate-400 uppercase tracking-widest">No activity recorded for this period</p>
+                                        </div>
+                                    </td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
             </div>
-            <div>
-              <p className="text-[#6b7280] text-[11px] font-bold uppercase tracking-wider leading-none mb-1 text-left">Records</p>
-              <p className="text-sm font-bold text-[#111827]">Log Attendance History</p>
-            </div>
-          </div>
-          <ArrowRight size={16} className="text-[#9ca3af] group-hover:text-indigo-600 group-hover:translate-x-1 transition-all" />
-        </button>
-
-        <button 
-          onClick={() => navigate('/leave')}
-          className="p-5 bg-white border border-[#e5e7eb] rounded-2xl flex items-center justify-between group hover:border-indigo-500 hover:shadow-md transition-all"
-        >
-          <div className="flex items-center gap-4">
-            <div className="w-10 h-10 bg-purple-50 rounded-xl flex items-center justify-center text-purple-600">
-              <CalendarCheck2 size={20} />
-            </div>
-            <div>
-              <p className="text-[#6b7280] text-[11px] font-bold uppercase tracking-wider leading-none mb-1 text-left">Operations</p>
-              <p className="text-sm font-bold text-[#111827]">Review Leave Requests</p>
-            </div>
-          </div>
-          <ArrowRight size={16} className="text-[#9ca3af] group-hover:text-violet-600 group-hover:translate-x-1 transition-all" />
-        </button>
-      </div>
             <DetailModal isOpen={activeModal === 'productivity'} onClose={() => setActiveModal(null)} title="Productivity Analysis">
                 <div className="space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

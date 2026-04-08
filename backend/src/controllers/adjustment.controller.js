@@ -1,4 +1,7 @@
 const { db } = require('../db/db');
+const { emitStatsUpdated } = require('../socket/events');
+const { getIo } = require('../socket');
+const { logActivity } = require('../db/logs');
 
 exports.addAdjustment = async (req, res) => {
     const { user_id, amount, type, description, month, year } = req.body;
@@ -7,6 +10,8 @@ exports.addAdjustment = async (req, res) => {
             sql: 'INSERT INTO salary_adjustments (user_id, amount, type, description, month, year) VALUES (?, ?, ?, ?, ?, ?)',
             args: [user_id, amount, type, description, month, year]
         });
+        await logActivity(req.user.id, 'salary_adjustment', { target_user_id: user_id, amount, type, description }, req.ip, req.headers['user-agent']);
+        emitStatsUpdated(getIo(), { message: 'Salary adjustment applied', userId: user_id });
         res.json({ message: 'Salary adjustment added successfully' });
     } catch (error) {
         res.status(500).json({ error: error.message });

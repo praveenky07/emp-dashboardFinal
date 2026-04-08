@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
+const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 
 if (!process.env.JWT_SECRET) {
@@ -24,6 +25,17 @@ app.use(cors({
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept']
 }));
+
+// Rate Limiting - Security Best Practice for International Companies
+const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 1000, // Limit each IP to 1000 requests per windowMs
+    message: { error: "Too many requests from this IP, please try again after 15 minutes" },
+    standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+    legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+});
+app.use('/api/', limiter);
+
 app.use(express.json());
 app.use(helmet());
 app.use(morgan('dev'));
@@ -50,7 +62,9 @@ const meetingRoutes = require('./routes/meeting.routes');
 const userRoutes = require('./routes/user.routes');
 const attendanceRoutes = require('./routes/attendance.routes');
 const performanceRoutes = require('./routes/performance.routes');
+const chatRoutes = require('./routes/chat.routes');
 const uploadRoutes = require('./routes/upload.routes');
+
 
 // Public Routes
 app.use('/api/auth', authRoutes);
@@ -77,7 +91,9 @@ app.use('/api/meetings', meetingRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/performance', performanceRoutes);
+app.use('/api/chat', chatRoutes);
 app.use('/api/upload', uploadRoutes);
+
 
 
 // Error Handling Middleware

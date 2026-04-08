@@ -154,9 +154,17 @@ exports.updateLeaveStatus = async (req, res) => {
 
   try {
     const leaveCheck = await db.execute({ sql: 'SELECT * FROM leaves WHERE id = ?', args: [id] });
-    if (leaveCheck.rows.length === 0) return res.status(404).json({ error: 'Leave not found' });
+    if (leaveCheck.rows.length === 0) return res.status(404).json({ error: 'Leave record not found' });
 
     const leave = leaveCheck.rows[0];
+    
+    // RBAC: Professional Resource Level Check
+    const isManager = Number(leave.appliedTo) === Number(loggedInUserId);
+    const isAdmin = role?.toLowerCase() === 'admin';
+    
+    if (!isManager && !isAdmin) {
+        return res.status(403).json({ error: "Access Denied: You are not authorized to moderate this leave request." });
+    }
     if (status === 'Approved' && leave.status === 'Pending') {
         const start = new Date(leave.start_date);
         const end = new Date(leave.end_date);
@@ -188,8 +196,11 @@ exports.updateLeaveStatus = async (req, res) => {
         }
     }
 
+    const clientIp = req.ip || req.headers['x-forwarded-for'];
+    const clientUa = req.headers['user-agent'];
+
     await db.execute({ sql: 'UPDATE leaves SET status = ? WHERE id = ?', args: [status, id] });
-    await logActivity(loggedInUserId, 'update_leave_status', { requestId: id, status });
+    await logActivity(loggedInUserId, 'update_leave_status', { requestId: id, status, employeeId: leave.user_id }, clientIp, clientUa);
     
     try {
         if (status === 'Approved') emitLeaveApproved(getIo(), { leaveId: id, userId: leave.user_id });

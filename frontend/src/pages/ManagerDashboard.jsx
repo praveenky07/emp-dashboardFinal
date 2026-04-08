@@ -27,7 +27,8 @@ import {
     Flag,
     Target,
     History,
-    Loader2
+    Loader2,
+    Star
 } from 'lucide-react';
 import {
     BarChart as ReBarChart,
@@ -75,6 +76,9 @@ const ManagerDashboard = () => {
     const [taskLoading, setTaskLoading] = useState(false);
     const [leaveBalance, setLeaveBalance] = useState({ total_leaves: 0, used_leaves: 0, remaining_leaves: 0 });
     const [teamBalances, setTeamBalances] = useState([]);
+    const [reviewForm, setReviewForm] = useState({ userId: '', rating: 5, feedback: '', tags: [], period: 'Q1 2026', bonus_amount: 0 });
+
+    const [submittingReview, setSubmittingReview] = useState(false);
 
     const fetchData = async () => {
         try {
@@ -180,8 +184,20 @@ const ManagerDashboard = () => {
             fetchManagedTasks();
             alert('Task assigned successfully!');
         } catch (err) { handleError(err); }
-
         finally { setTaskLoading(false); }
+    };
+
+    const handleSubmitReview = async (e) => {
+        e.preventDefault();
+        try {
+            setSubmittingReview(true);
+            await api.post('/performance/submit-review', reviewForm);
+            alert('Review submitted successfully!');
+            setActiveModal(null);
+            setReviewForm({ userId: '', rating: 5, feedback: '', tags: [], period: 'Q1 2026', bonus_amount: 0 });
+
+        } catch (err) { handleError(err); }
+        finally { setSubmittingReview(false); }
     };
 
     const COLORS = ['#4F46E5', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6'];
@@ -681,7 +697,17 @@ const ManagerDashboard = () => {
                                     <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-1 truncate">{member.role}</p>
                                 </div>
                             </div>
-                            <div className="text-right shrink-0">
+                            <div className="flex items-center gap-2 shrink-0">
+                                <button 
+                                    onClick={() => {
+                                        setReviewForm({ ...reviewForm, userId: member.id });
+                                        setActiveModal('submitReview');
+                                    }}
+                                    className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
+                                    title="Submit Review"
+                                >
+                                    <Star size={18} />
+                                </button>
                                 <span className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full text-[9px] font-black uppercase tracking-widest transition-all">ACTIVE</span>
                             </div>
                         </div>
@@ -797,6 +823,104 @@ const ManagerDashboard = () => {
                         </tbody>
                     </table>
                 </div>
+            </DetailModal>
+
+            {/* Submit Performance Review Modal */}
+            <DetailModal isOpen={activeModal === 'submitReview'} onClose={() => setActiveModal(null)} title="Author Performance Review">
+                 <form onSubmit={handleSubmitReview} className="space-y-6">
+                    <div className="bg-indigo-50 p-6 rounded-[32px] border border-indigo-100 flex items-center gap-4">
+                        <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-indigo-600 font-extrabold shadow-sm border border-indigo-100">
+                             {team.find(m => m.id === reviewForm.userId)?.name?.[0] || '?'}
+                        </div>
+                        <div>
+                             <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Reviewing Subordinate</p>
+                             <p className="text-lg font-black text-slate-900 leading-none">{team.find(m => m.id === reviewForm.userId)?.name || 'Direct Report'}</p>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                         <div className="space-y-1.5">
+                            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider ml-1">Evaluation Score (1-5)</label>
+                            <input 
+                                type="number" 
+                                min="1" 
+                                max="5" 
+                                value={reviewForm.rating}
+                                onChange={e => setReviewForm({...reviewForm, rating: e.target.value})}
+                                className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-black focus:border-indigo-600 outline-none transition-all"
+                            />
+                         </div>
+                         <div className="space-y-1.5">
+                            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider ml-1">Performance Bonus ($)</label>
+                            <input 
+                                type="number" 
+                                min="0"
+                                value={reviewForm.bonus_amount}
+                                onChange={e => setReviewForm({...reviewForm, bonus_amount: e.target.value})}
+                                className="w-full px-5 py-4 bg-emerald-50 border border-emerald-100 rounded-2xl text-sm font-black focus:border-emerald-600 focus:bg-white outline-none transition-all"
+                                placeholder="0.00"
+                            />
+                         </div>
+                    </div>
+                    <div className="space-y-1.5">
+                       <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider ml-1">Review Period</label>
+                       <select 
+                           value={reviewForm.period}
+                           onChange={e => setReviewForm({...reviewForm, period: e.target.value})}
+                           className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-black focus:border-indigo-600 outline-none transition-all cursor-pointer"
+                       >
+                           <option value="Q1 2026">Q1 2026 (Jan - Mar)</option>
+                           <option value="Q2 2026">Q2 2026 (Apr - Jun)</option>
+                           <option value="April 2026">April 2026</option>
+                       </select>
+                    </div>
+
+
+                    <div className="space-y-1.5">
+                         <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider ml-1">Qualitative Feedback</label>
+                         <textarea 
+                            value={reviewForm.feedback}
+                            onChange={e => setReviewForm({...reviewForm, feedback: e.target.value})}
+                            className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-3xl text-sm font-bold focus:border-indigo-600 outline-none h-32 resize-none"
+                            placeholder="Detail player accomplishments, synergy, and growth areas..."
+                            required
+                         />
+                    </div>
+
+                    <div className="space-y-1.5">
+                         <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider ml-1">Performance Tags</label>
+                         <div className="flex flex-wrap gap-2">
+                             {['Top Performer', 'Leadership', 'Technical Excellence', 'Team Player', 'Growth Mindset'].map(tag => (
+                                 <button 
+                                    key={tag}
+                                    type="button"
+                                    onClick={() => {
+                                        const tags = reviewForm.tags.includes(tag) 
+                                            ? reviewForm.tags.filter(t => t !== tag)
+                                            : [...reviewForm.tags, tag];
+                                        setReviewForm({...reviewForm, tags});
+                                    }}
+                                    className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border ${
+                                        reviewForm.tags.includes(tag) 
+                                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-100' 
+                                        : 'bg-white text-slate-400 border-slate-100 hover:border-indigo-200'
+                                    }`}
+                                 >
+                                     {tag}
+                                 </button>
+                             ))}
+                         </div>
+                    </div>
+
+                    <button 
+                        type="submit" 
+                        disabled={submittingReview}
+                        className="w-full bg-indigo-600 text-white py-5 rounded-3xl font-black uppercase tracking-[0.2em] shadow-2xl shadow-indigo-200 hover:bg-indigo-700 active:scale-[0.98] transition-all flex items-center justify-center gap-3"
+                    >
+                        {submittingReview ? <Loader2 className="animate-spin" size={20} /> : <Zap size={20} />}
+                        Log Final Evaluation
+                    </button>
+                 </form>
             </DetailModal>
         </div>
     );

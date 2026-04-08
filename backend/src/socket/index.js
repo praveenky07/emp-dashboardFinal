@@ -87,6 +87,51 @@ const initSocket = (server) => {
             onlineUsers.delete(userId);
             io.emit('activeUsersUpdated', Array.from(onlineUsers.keys()));
         });
+
+        // WebRTC Signaling
+        socket.on("call-user", (data) => {
+            const receiverSocketId = onlineUsers.get(data.to);
+            if (receiverSocketId) {
+                io.to(receiverSocketId).emit("incoming-call", {
+                    from: data.from,
+                    name: data.name,
+                    offer: data.offer,
+                    type: data.type
+                });
+            }
+        });
+
+        socket.on("make-answer", (data) => {
+            const receiverSocketId = onlineUsers.get(data.to);
+            if (receiverSocketId) {
+                io.to(receiverSocketId).emit("call-answered", {
+                    answer: data.answer
+                });
+            }
+        });
+
+        socket.on("ice-candidate", (data) => {
+            const receiverSocketId = onlineUsers.get(data.to);
+            if (receiverSocketId) {
+                io.to(receiverSocketId).emit("ice-candidate", {
+                    candidate: data.candidate
+                });
+            }
+        });
+
+        socket.on("reject-call", (data) => {
+            const receiverSocketId = onlineUsers.get(data.from);
+            if (receiverSocketId) {
+                io.to(receiverSocketId).emit("call-rejected");
+            }
+        });
+
+        socket.on("end-call", (data) => {
+            const receiverSocketId = onlineUsers.get(data.to);
+            if (receiverSocketId) {
+                io.to(receiverSocketId).emit("call-ended");
+            }
+        });
     });
 
     return io;

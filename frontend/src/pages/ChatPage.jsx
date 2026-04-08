@@ -14,10 +14,16 @@ import {
     Video,
     Smile,
     Paperclip,
-    Menu,
     Download,
     FileText,
-    Image as ImageIcon
+    Image as ImageIcon,
+    X,
+    Mic,
+    MicOff,
+    VideoOff,
+    PhoneOff,
+    Maximize2,
+    Trash
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -31,8 +37,22 @@ const ChatPage = () => {
     const [searchQuery, setSearchQuery] = useState('');
     const [uploading, setUploading] = useState(false);
     const [onlineUsers, setOnlineUsers] = useState(new Set());
+    
+    // Calling State
+    const [callStatus, setCallStatus] = useState('idle'); // idle, calling, incoming, in-call
+    const [incomingCall, setIncomingCall] = useState(null);
+    const [localStream, setLocalStream] = useState(null);
+    const [remoteStream, setRemoteStream] = useState(null);
+    const [callType, setCallType] = useState('video'); // audio, video
+    const [isMuted, setIsMuted] = useState(false);
+    const [isVideoOff, setIsVideoOff] = useState(false);
+    const [showMenu, setShowMenu] = useState(false);
+
     const messagesEndRef = useRef(null);
     const fileInputRef = useRef(null);
+    const pc = useRef(null);
+    const localVideoRef = useRef(null);
+    const remoteVideoRef = useRef(null);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -53,12 +73,47 @@ const ChatPage = () => {
             setOnlineUsers(new Set(userIds));
         });
 
-        const handleUserStatus = (data) => {
-            // Future refinement: real user IDs
-        };
+        // Calling Signaling
+        socket.on('incoming-call', (data) => {
+            console.log('[CALL] Incoming call from:', data.name);
+            setIncomingCall(data);
+            setCallStatus('incoming');
+            setCallType(data.type);
+        });
+
+        socket.on('call-answered', async (data) => {
+            console.log('[CALL] Call answered');
+            if (pc.current) {
+                await pc.current.setRemoteDescription(new RTCSessionDescription(data.answer));
+                setCallStatus('in-call');
+            }
+        });
+
+        socket.on('ice-candidate', async (data) => {
+            if (pc.current && data.candidate) {
+                try {
+                    await pc.current.addIceCandidate(new RTCIceCandidate(data.candidate));
+                } catch (e) { console.error('[PC] Error adding candidate:', e); }
+            }
+        });
+
+        socket.on('call-rejected', () => {
+             console.log('[CALL] Call rejected');
+             handleEndCallLocally();
+        });
+
+        socket.on('call-ended', () => {
+             console.log('[CALL] Peer ended call');
+             handleEndCallLocally();
+        });
 
         return () => {
             socket.off('activeUsersUpdated');
+            socket.off('incoming-call');
+            socket.off('call-answered');
+            socket.off('ice-candidate');
+            socket.off('call-rejected');
+            socket.off('call-ended');
         };
     }, []);
 
@@ -109,6 +164,120 @@ const ChatPage = () => {
         scrollToBottom();
     }, [messages]);
 
+
+    useEffect(() => {
+        if (localStream && localVideoRef.current) localVideoRef.current.srcObject = localStream;
+    }, [localStream, callStatus]);
+
+    useEffect(() => {
+        if (remoteStream && remoteVideoRef.current) remoteVideoRef.current.srcObject = remoteStream;
+    }, [remoteStream, callStatus]);
+
+    const handleEndCallLocally = () => {
+        if (pc.current) { pc.current.close(); pc.current = null; }
+        if (localStream) { localStream.getTracks().forEach(t => t.stop()); setLocalStream(null); }
+        setRemoteStream(null);
+        setCallStatus('idle');
+        setIncomingCall(null);
+    };
+
+    const handleRejectCall = () => {
+        if (incomingCall) socket.emit('reject-call', { from: incomingCall.from });
+        handleEndCallLocally();
+    };
+
+    const handleEndCall = () => {
+        if (selectedChat) socket.emit('end-call', { to: selectedChat.id });
+        if (incomingCall) socket.emit('end-call', { to: incomingCall.from });
+        handleEndCallLocally();
+    };
+
+    const createPeerConnection = (targetId) => {
+        const config = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
+        pc.current = new RTCPeerConnection(config);
+
+        pc.current.onicecandidate = (e) => {
+            if (e.candidate) {
+                socket.emit('ice-candidate', { to: targetId, candidate: e.candidate });
+            }
+        };
+
+        pc.current.ontrack = (e) => {
+            console.log('[PC] Remote track received');
+            setRemoteStream(e.streams[0]);
+        };
+
+        if (localStream) {
+            localStream.getTracks().forEach(t => pc.current.addTrack(t, localStream));
+        }
+    };
+
+    const startCall = async (type) => {
+        if (!selectedChat) return;
+        setCallType(type);
+        setCallStatus('calling');
+
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                audio: true, 
+                video: type === 'video' 
+            });
+            setLocalStream(stream);
+
+            createPeerConnection(selectedChat.id);
+
+            const offer = await pc.current.createOffer();
+            await pc.current.setLocalDescription(offer);
+
+            socket.emit('call-user', {
+                to: selectedChat.id,
+                from: currentUser.id,
+                name: currentUser.name,
+                offer,
+                type
+            });
+        } catch (err) {
+            console.error('[CALL] Failed to access media products:', err);
+            setCallStatus('idle');
+        }
+    };
+
+    const answerCall = async () => {
+        if (!incomingCall) return;
+        setCallStatus('in-call');
+
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                audio: true, 
+                video: incomingCall.type === 'video' 
+            });
+            setLocalStream(stream);
+
+            // Need to set local stream in local PC manually because tracks might be added after createPC
+            const config = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
+            pc.current = new RTCPeerConnection(config);
+
+            pc.current.onicecandidate = (e) => {
+                if (e.candidate) socket.emit('ice-candidate', { to: incomingCall.from, candidate: e.candidate });
+            };
+
+            pc.current.ontrack = (e) => setRemoteStream(e.streams[0]);
+
+            stream.getTracks().forEach(t => pc.current.addTrack(t, stream));
+
+            await pc.current.setRemoteDescription(new RTCSessionDescription(incomingCall.offer));
+            const answer = await pc.current.createAnswer();
+            await pc.current.setLocalDescription(answer);
+
+            socket.emit('make-answer', {
+                to: incomingCall.from,
+                answer
+            });
+        } catch (err) {
+            console.error('[CALL] Answer failed:', err);
+            handleRejectCall();
+        }
+    };
 
     const handleSendMessage = (e, fileUrl = null, fileType = null) => {
         if (e) e.preventDefault();
@@ -265,10 +434,25 @@ const ChatPage = () => {
                                     </div>
                                 </div>
                             </div>
-                            <div className="flex items-center gap-2">
-                                <button className="p-3 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"><Phone size={20} /></button>
-                                <button className="p-3 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"><Video size={20} /></button>
-                                <button className="p-3 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"><MoreVertical size={20} /></button>
+                            <div className="flex items-center gap-2 relative">
+                                <button onClick={() => startCall('audio')} className="p-3 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"><Phone size={20} /></button>
+                                <button onClick={() => startCall('video')} className="p-3 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"><Video size={20} /></button>
+                                <button onClick={() => setShowMenu(!showMenu)} className="p-3 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"><MoreVertical size={20} /></button>
+                                
+                                <AnimatePresence>
+                                    {showMenu && (
+                                        <motion.div 
+                                            initial={{ opacity: 0, y: 10 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            exit={{ opacity: 0, y: 10 }}
+                                            className="absolute right-0 top-14 w-48 bg-white rounded-2xl shadow-xl border border-slate-100 z-50 overflow-hidden"
+                                        >
+                                            <button onClick={() => { setShowMenu(false); window.openProfile?.(); }} className="w-full px-4 py-3 text-left text-sm font-bold text-slate-600 hover:bg-slate-50 flex items-center gap-2"><User size={16} /> View Profile</button>
+                                            <button onClick={() => { setShowMenu(false); alert('User blocked.'); }} className="w-full px-4 py-3 text-left text-sm font-bold text-red-600 hover:bg-red-50 flex items-center gap-2"><MicOff size={16} /> Block User</button>
+                                            <button onClick={() => { setShowMenu(false); setMessages([]); }} className="w-full px-4 py-3 text-left text-sm font-bold text-slate-600 hover:bg-slate-50 flex items-center gap-2"><Trash size={16} /> Clear Chat</button>
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
                             </div>
                         </div>
 
@@ -360,6 +544,120 @@ const ChatPage = () => {
                         <p className="text-sm font-bold max-w-xs uppercase tracking-widest leading-loose">Choose a team member or group from the sidebar to start collaborating.</p>
                     </div>
                 )}
+
+                {/* Calling UI Overlays */}
+                <AnimatePresence>
+                    {callStatus === 'incoming' && incomingCall && (
+                        <motion.div 
+                            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                            className="fixed inset-0 bg-slate-900/90 backdrop-blur-xl z-[100] flex items-center justify-center p-6"
+                        >
+                            <motion.div 
+                                initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }}
+                                className="bg-white w-full max-w-sm rounded-[40px] p-8 text-center shadow-2xl"
+                            >
+                                <div className="w-24 h-24 bg-indigo-600 rounded-[32px] mx-auto mb-6 flex items-center justify-center text-white shadow-xl shadow-indigo-200 animate-pulse">
+                                    <Phone size={40} />
+                                </div>
+                                <h2 className="text-2xl font-black text-slate-900 mb-1">{incomingCall.name}</h2>
+                                <p className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-10">Incoming {incomingCall.type} call...</p>
+                                
+                                <div className="flex gap-4">
+                                    <button 
+                                        onClick={handleRejectCall}
+                                        className="flex-1 py-4 bg-red-50 text-red-600 rounded-3xl font-black uppercase tracking-widest text-xs hover:bg-red-100 transition-all"
+                                    >
+                                        Decline
+                                    </button>
+                                    <button 
+                                        onClick={answerCall}
+                                        className="flex-1 py-4 bg-emerald-500 text-white rounded-3xl font-black uppercase tracking-widest text-xs hover:bg-emerald-600 shadow-lg shadow-emerald-100 transition-all"
+                                    >
+                                        Accept
+                                    </button>
+                                </div>
+                            </motion.div>
+                        </motion.div>
+                    )}
+
+                    {(callStatus === 'calling' || callStatus === 'in-call') && (
+                        <motion.div 
+                            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                            className="fixed inset-0 bg-slate-950 z-[110] flex flex-col"
+                        >
+                            {/* Remote Video (Full Screen) */}
+                            <div className="flex-1 relative bg-slate-900 overflow-hidden flex items-center justify-center">
+                                {callType === 'video' ? (
+                                    <video 
+                                        ref={remoteVideoRef} 
+                                        autoPlay 
+                                        playsInline 
+                                        className="w-full h-full object-cover"
+                                    />
+                                ) : (
+                                    <div className="text-center">
+                                        <div className="w-32 h-32 bg-indigo-600 rounded-[48px] mx-auto mb-6 flex items-center justify-center text-white text-4xl font-black shadow-2xl">
+                                            {selectedChat?.name[0] || incomingCall?.name[0]}
+                                        </div>
+                                        <h2 className="text-3xl font-black text-white">{selectedChat?.name || incomingCall?.name}</h2>
+                                        <p className="text-indigo-400 font-bold uppercase tracking-[0.2em] text-xs mt-4">Voice Call Connected</p>
+                                    </div>
+                                )}
+
+                                {/* Local Preview (Picture in Picture) */}
+                                {callType === 'video' && (
+                                    <div className="absolute top-8 right-8 w-48 aspect-video bg-slate-800 rounded-3xl border-2 border-white/10 shadow-2xl overflow-hidden z-10">
+                                        <video 
+                                            ref={localVideoRef} 
+                                            autoPlay 
+                                            muted 
+                                            playsInline 
+                                            className="w-full h-full object-cover"
+                                        />
+                                    </div>
+                                )}
+
+                                {callStatus === 'calling' && (
+                                    <div className="absolute inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center">
+                                        <div className="text-center">
+                                            <p className="text-white text-xl font-black animate-pulse">Calling...</p>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Call Controls Bar */}
+                            <div className="h-32 bg-slate-900/50 backdrop-blur-md border-t border-white/5 flex items-center justify-center gap-6 px-8">
+                                <button 
+                                    onClick={() => setIsMuted(!isMuted)}
+                                    className={`p-5 rounded-[24px] transition-all ${isMuted ? 'bg-white text-slate-900' : 'bg-white/10 text-white hover:bg-white/20'}`}
+                                >
+                                    {isMuted ? <MicOff size={24} /> : <Mic size={24} />}
+                                </button>
+                                
+                                {callType === 'video' && (
+                                    <button 
+                                        onClick={() => setIsVideoOff(!isVideoOff)}
+                                        className={`p-5 rounded-[24px] transition-all ${isVideoOff ? 'bg-white text-slate-900' : 'bg-white/10 text-white hover:bg-white/20'}`}
+                                    >
+                                        {isVideoOff ? <VideoOff size={24} /> : <Video size={24} />}
+                                    </button>
+                                )}
+
+                                <button 
+                                    onClick={handleEndCall}
+                                    className="p-6 bg-red-500 text-white rounded-[32px] hover:bg-red-600 hover:scale-105 active:scale-95 transition-all shadow-2xl shadow-red-500/20"
+                                >
+                                    <PhoneOff size={28} />
+                                </button>
+
+                                <button className="p-5 bg-white/10 text-white rounded-[24px] hover:bg-white/20 transition-all">
+                                    <Maximize2 size={24} />
+                                </button>
+                            </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
             </div>
         </div>
     );

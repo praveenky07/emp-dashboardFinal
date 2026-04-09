@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import api from '../services/api';
 import socket from '../services/socket';
 import DetailModal from '../components/DetailModal';
-import { handleError } from '../utils/handleError';
+import { handleError, showToast } from '../utils/handleError';
 
 import { 
   Play, 
@@ -122,6 +122,10 @@ const EmployeeDashboard = () => {
                 const start = new Date(statusRes.data.startTime);
                 const now = new Date();
                 setTimer(Math.floor((now - start) / 1000));
+            } else if (statusRes.data.completed && statusRes.data.startTime && statusRes.data.endTime) {
+                const start = new Date(statusRes.data.startTime);
+                const end = new Date(statusRes.data.endTime);
+                setTimer(Math.floor((end - start) / 1000));
             }
         } catch (e) {
             console.error('Error fetching dashboard data', e);
@@ -307,12 +311,12 @@ const EmployeeDashboard = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <StatCard 
                     icon={CalendarDays} 
-                    label="Attendance History" 
-                    value={`${workLogs?.filter(l => l.clock_out)?.length || 0} / ${new Date().getDate()} Days`} 
+                    label="Current Month Attendance" 
+                    value={`${workLogs?.filter(l => l.clock_out)?.length || 0} Present`} 
                     color="text-emerald-600"
                     bgColor="bg-emerald-50"
                     onClick={() => navigate('/attendance')}
-                    trend={`${workLogs?.length > 0 ? ((workLogs.filter(l => l.status === 'Present').length / workLogs.length) * 100).toFixed(0) : 0}% Present`}
+                    trend={`out of ${new Date().getDate()} Working Days`}
                 />
                 <StatCard 
                     icon={Timer} 
@@ -383,7 +387,7 @@ const EmployeeDashboard = () => {
                         </div>
 
                         <div className="flex flex-wrap justify-center gap-4 w-full max-w-lg">
-                            {!status.active ? (
+                            {!status.active && !status.completed ? (
                                 <button 
                                     onClick={handleStartWork}
                                     disabled={actionLoading}
@@ -393,6 +397,11 @@ const EmployeeDashboard = () => {
                                     <span>Commence Day Shift</span>
                                     <ArrowRight size={20} className="ml-1 group-hover:translate-x-1 transition-transform" />
                                 </button>
+                            ) : status.completed ? (
+                                <div className="w-full text-center bg-emerald-50 border border-emerald-100 p-6 rounded-[24px]">
+                                    <h3 className="text-xl font-black text-emerald-600 mb-2 flex items-center justify-center gap-2"><CheckCircle2 size={24} /> Shift Completed</h3>
+                                    <p className="text-sm font-bold text-emerald-700/70">Logged {new Date(status.startTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} - {new Date(status.endTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
+                                </div>
                             ) : (
                                 <>
                                     <button 
@@ -426,7 +435,7 @@ const EmployeeDashboard = () => {
                 <div className="flex flex-col gap-6">
                     <button 
                         onClick={() => setActiveModal('productivity')}
-                        className="premium-card p-8 flex flex-col justify-between h-52 group text-left"
+                        className="premium-card p-8 flex flex-col justify-between h-52 group text-left transition-all hover:-translate-y-1 hover:shadow-xl hover:shadow-indigo-500/10"
                     >
                         <div className="flex justify-between items-start">
                             <div className="w-12 h-12 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-all">
@@ -445,18 +454,26 @@ const EmployeeDashboard = () => {
                         </div>
                     </button>
                     
-                    <div className="premium-card p-8 flex-1 flex flex-col justify-center gap-2">
-                        <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">Active Focus</p>
-                        <h4 className="text-lg font-bold text-slate-900 leading-tight">Engineering Workspace Alpha</h4>
+                    <button 
+                        onClick={() => document.getElementById('active-projects-section')?.scrollIntoView({ behavior: 'smooth' })}
+                        className="premium-card p-8 flex-1 flex flex-col justify-center gap-2 group text-left cursor-pointer transition-all hover:-translate-y-1 hover:shadow-xl hover:border-indigo-500"
+                    >
+                        <div className="flex justify-between items-center w-full">
+                            <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">Active Focus</p>
+                            <ArrowUpRight size={16} className="text-slate-300 group-hover:text-indigo-600 transition-colors" />
+                        </div>
+                        <h4 className="text-lg font-bold text-slate-900 leading-tight group-hover:text-indigo-600 transition-colors line-clamp-2">
+                             {assignedProjects[0]?.name || 'Engineering Workspace Alpha'}
+                        </h4>
                         <div className="flex items-center gap-2 mt-4">
                             <div className="flex -space-x-2">
                                 {[1,2,3].map(i => (
-                                    <div key={i} className="w-8 h-8 rounded-full border-2 border-white bg-slate-200 flex items-center justify-center text-[10px] font-bold">U{i}</div>
+                                    <div key={i} className="w-8 h-8 rounded-full border-2 border-white bg-slate-200 flex items-center justify-center text-[10px] font-bold shadow-sm group-hover:border-indigo-50 transition-colors text-slate-500">U{i}</div>
                                 ))}
                             </div>
-                            <span className="text-xs font-bold text-slate-500">+12 Others</span>
+                            <span className="text-xs font-bold text-slate-500 group-hover:text-indigo-600 transition-colors">+ Team Access</span>
                         </div>
-                    </div>
+                    </button>
                 </div>
             </div>
 
@@ -570,7 +587,7 @@ const EmployeeDashboard = () => {
           </div>
         </div>
 
-        <div className="bg-white p-8 rounded-[24px] border border-[#e5e7eb] shadow-sm">
+        <div id="active-projects-section" className="bg-white p-8 rounded-[24px] border border-[#e5e7eb] shadow-sm">
           <div className="flex items-center justify-between mb-6">
             <div>
               <h2 className="text-xl font-bold text-[#111827] tracking-tight">Active Projects</h2>

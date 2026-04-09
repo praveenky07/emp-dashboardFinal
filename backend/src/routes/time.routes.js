@@ -1,8 +1,6 @@
 const express = require('express');
 const router = express.Router();
 const { 
-  clockIn, 
-  clockOut, 
   startBreak, 
   stopBreak, 
   logMeeting, 
@@ -16,8 +14,8 @@ const {
 const { protect, authorize } = require('../middleware/auth.middleware');
 
 
-router.post('/clock-in', protect, clockIn);
-router.post('/clock-out', protect, clockOut);
+
+
 router.post('/start-break', protect, startBreak);
 router.post('/stop-break', protect, stopBreak);
 router.post('/log-meeting', protect, logMeeting);

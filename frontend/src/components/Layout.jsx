@@ -59,29 +59,31 @@ const Sidebar = ({ user, isOpen, setIsOpen }) => {
           <span className="text-xl font-bold text-[#111827] tracking-tight">EMP PRO</span>
         </div>
 
-        <nav className="space-y-1">
-          {menuItems.map((item) => (
-            <NavLink
-              key={item.path}
-              to={item.path}
-              onClick={() => window.innerWidth < 1024 && setIsOpen(false)}
-              className={({ isActive }) => `
-                flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-bold text-sm
-                ${isActive 
-                  ? 'bg-indigo-50 text-indigo-600' 
-                  : 'text-[#6b7280] hover:bg-slate-50 hover:text-[#111827]'
-                }
-              `}
-            >
-              {({ isActive }) => (
-                <>
-                  <item.icon size={20} strokeWidth={isActive ? 2.5 : 2} />
-                  <span>{item.name}</span>
-                </>
-              )}
-            </NavLink>
-          ))}
-        </nav>
+        <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+          <nav className="space-y-1">
+            {menuItems.map((item) => (
+              <NavLink
+                key={item.path}
+                to={item.path}
+                onClick={() => window.innerWidth < 1024 && setIsOpen(false)}
+                className={({ isActive }) => `
+                  flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-bold text-sm
+                  ${isActive 
+                    ? 'bg-indigo-50 text-indigo-600' 
+                    : 'text-[#6b7280] hover:bg-slate-50 hover:text-[#111827]'
+                  }
+                `}
+              >
+                {({ isActive }) => (
+                  <>
+                    <item.icon size={20} strokeWidth={isActive ? 2.5 : 2} />
+                    <span>{item.name}</span>
+                  </>
+                )}
+              </NavLink>
+            ))}
+          </nav>
+        </div>
       </div>
 
       <div className="mt-auto p-6 border-t border-[#e5e7eb]">

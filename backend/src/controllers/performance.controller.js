@@ -2,13 +2,11 @@ const { db } = require('../db/db');
 const { logActivity } = require('../db/logs');
 const { getIo } = require('../socket');
 const { emitReviewSubmitted } = require('../socket/events');
-
+const notificationService = require('../services/notification.service');
 
 exports.getPerformanceData = async (req, res) => {
     const userId = req.user.id;
     const { range = 'weekly' } = req.query;
-
-    console.log(`[DEBUG] Performance API: Fetching data for User: ${userId}, Range: ${range}`);
 
     let interval;
     let groupBy;
@@ -50,53 +48,22 @@ exports.getPerformanceData = async (req, res) => {
         const labels = [];
         const data = [];
 
-        if (result.rows.length === 0) {
-            console.log('[DEBUG] No performance data found. Generating dummy data.');
-            // Generate dummy dynamic data
-            if (range === 'weekly') {
-                for (let i = 6; i >= 0; i--) {
-                    const d = new Date();
-                    d.setDate(d.getDate() - i);
-                    labels.push(d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
-                    data.push(Math.floor(Math.random() * (32400 - 18000) + 18000)); // 5-9 hours
-                }
-            } else if (range === 'monthly') {
-                for (let i = 29; i >= 0; i -= 2) {
-                    const d = new Date();
-                    d.setDate(d.getDate() - i);
-                    labels.push(d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
-                    data.push(Math.floor(Math.random() * (32400 - 18000) + 18000));
-                }
-            } else { // quarterly
+        // REMOVED: Dummy data generation. System now reflects real DB data only factor.
+        result.rows.forEach(row => {
+            let label;
+            if (range === 'quarterly') {
+                const monthIdx = parseInt(row.label_key) - 1;
                 const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-                const currentMonth = new Date().getMonth();
-                for (let i = 2; i >= 0; i--) {
-                    const monthIdx = (currentMonth - i + 12) % 12;
-                    labels.push(months[monthIdx]);
-                    data.push(Math.floor(Math.random() * (800000 - 500000) + 500000));
-                }
+                label = months[monthIdx];
+            } else {
+                label = new Date(row.label_key).toLocaleDateString('en-US', labelFormat);
             }
-        } else {
-            result.rows.forEach(row => {
-                let label;
-                if (range === 'quarterly') {
-                    // label_key is '01', '02', etc.
-                    const monthIdx = parseInt(row.label_key) - 1;
-                    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-                    label = months[monthIdx];
-                } else {
-                    // label_key is 'YYYY-MM-DD'
-                    label = new Date(row.label_key).toLocaleDateString('en-US', labelFormat);
-                }
-                labels.push(label);
-                data.push(Math.floor(row.duration));
-            });
-        }
+            labels.push(label);
+            data.push(Math.max(0, Math.floor(row.duration)));
+        });
 
         res.json({ labels, data });
-
     } catch (error) {
-        console.error('[ERROR] Performance Controller Error:', error);
         res.status(500).json({ error: error.message });
     }
 };
@@ -107,11 +74,10 @@ exports.submitReview = async (req, res) => {
     const role = req.user.role?.toLowerCase();
 
     if (!userId || !rating || !period) {
-        return res.status(400).json({ error: 'Missing required fields: userId, rating, and period are mandatory.' });
+        return res.status(400).json({ error: 'Missing required fields.' });
     }
 
     try {
-        // RBAC: Check if reviewer is authorized to review this user
         const targetUserResult = await db.execute({
             sql: 'SELECT manager_id FROM users WHERE id = ?',
             args: [userId]
@@ -120,11 +86,8 @@ exports.submitReview = async (req, res) => {
         if (targetUserResult.rows.length === 0) return res.status(404).json({ error: 'Target employee not found' });
 
         const targetManagerId = targetUserResult.rows[0].manager_id;
-        const isAdmin = role === 'admin';
-        const isManager = Number(targetManagerId) === Number(reviewerId);
-
-        if (!isAdmin && !isManager) {
-            return res.status(403).json({ error: 'Forbidden: You are only authorized to review your direct reports.' });
+        if (role !== 'admin' && Number(targetManagerId) !== Number(reviewerId)) {
+            return res.status(403).json({ error: 'Forbidden: You can only review your direct reports.' });
         }
 
         const tagsJson = JSON.stringify(tags || []);
@@ -139,34 +102,9 @@ exports.submitReview = async (req, res) => {
         await logActivity(reviewerId, 'submit_performance_review', { targetUserId: userId, rating, period }, clientIp, clientUa);
 
         emitReviewSubmitted(getIo(), { userId, reviewerId, rating, period });
+        await notificationService.createNotification(userId, 'performance', `New performance evaluation: ${rating}/5 for ${period}`, { reviewerId, period });
 
-        res.status(201).json({ message: 'Performance review submitted successfully' });
-    } catch (error) {
-        console.error('[ERROR] submitReview:', error);
-        res.status(500).json({ error: 'Failed to submit review' });
-    }
-};
-
-exports.getMyReviews = async (req, res) => {
-    const userId = req.user.id;
-    try {
-        const result = await db.execute({
-            sql: `
-                SELECT pr.*, u.name as reviewer_name 
-                FROM performance_reviews pr 
-                JOIN users u ON pr.reviewer_id = u.id 
-                WHERE pr.user_id = ? 
-                ORDER BY pr.created_at DESC
-            `,
-            args: [userId]
-        });
-
-        const transformed = result.rows.map(row => ({
-            ...row,
-            tags: JSON.parse(row.tags || '[]')
-        }));
-
-        res.json(transformed);
+        res.status(201).json({ message: 'Review submitted' });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -175,10 +113,9 @@ exports.getMyReviews = async (req, res) => {
 exports.getReviewsByEmployeeId = async (req, res) => {
     const { employeeId } = req.params;
     const requesterId = req.user.id;
-    const role = req.user.role?.toLowerCase();
+    const role = (req.user.role || '').toLowerCase();
 
     try {
-        // RBAC: Only admin or the employee's manager can view reviews
         const targetUserResult = await db.execute({
             sql: 'SELECT manager_id FROM users WHERE id = ?',
             args: [employeeId]
@@ -188,7 +125,7 @@ exports.getReviewsByEmployeeId = async (req, res) => {
 
         const targetManagerId = targetUserResult.rows[0].manager_id;
         if (role !== 'admin' && Number(targetManagerId) !== Number(requesterId) && Number(employeeId) !== Number(requesterId)) {
-            return res.status(403).json({ error: 'Forbidden: Unauthorized access to reviews.' });
+            return res.status(403).json({ error: 'Forbidden: Unauthorized access.' });
         }
 
         const result = await db.execute({
@@ -202,12 +139,7 @@ exports.getReviewsByEmployeeId = async (req, res) => {
             args: [employeeId]
         });
 
-        const transformed = result.rows.map(row => ({
-            ...row,
-            tags: JSON.parse(row.tags || '[]')
-        }));
-
-        res.json(transformed);
+        res.json(result.rows.map(row => ({ ...row, tags: JSON.parse(row.tags || '[]') })));
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -215,7 +147,7 @@ exports.getReviewsByEmployeeId = async (req, res) => {
 
 exports.getTeamReviews = async (req, res) => {
     const managerId = req.user.id;
-    const role = req.user.role?.toLowerCase();
+    const role = (req.user.role || '').toLowerCase();
 
     try {
         let sql = `
@@ -232,24 +164,32 @@ exports.getTeamReviews = async (req, res) => {
         }
 
         const result = await db.execute({ sql: sql + ' ORDER BY pr.created_at DESC', args });
-        
-        const transformed = result.rows.map(row => ({
-            ...row,
-            tags: JSON.parse(row.tags || '[]')
-        }));
+        res.json(result.rows.map(row => ({ ...row, tags: JSON.parse(row.tags || '[]') })));
+    } catch (error) { res.status(500).json({ error: error.message }); }
+};
 
-        res.json(transformed);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+exports.getMyReviews = async (req, res) => {
+    const userId = req.user.id;
+    try {
+        const result = await db.execute({
+            sql: `
+                SELECT pr.*, u.name as reviewer_name 
+                FROM performance_reviews pr 
+                JOIN users u ON pr.reviewer_id = u.id 
+                WHERE pr.user_id = ? 
+                ORDER BY pr.created_at DESC
+            `,
+            args: [userId]
+        });
+
+        res.json(result.rows.map(row => ({ ...row, tags: JSON.parse(row.tags || '[]') })));
+    } catch (error) { res.status(500).json({ error: error.message }); }
 };
 
 exports.submitBonus = async (req, res) => {
     const { employeeId, amount, reason } = req.body;
     const managerId = req.user.id;
     const role = req.user.role?.toLowerCase();
-
-    if (!employeeId || !amount) return res.status(400).json({ error: 'Employee ID and amount are required' });
 
     try {
         const targetUserResult = await db.execute({
@@ -269,19 +209,14 @@ exports.submitBonus = async (req, res) => {
             args: [employeeId, managerId, amount, reason]
         });
 
-        await logActivity(managerId, 'award_bonus', { targetUserId: employeeId, amount, reason }, req.ip, req.headers['user-agent']);
-
-        res.status(201).json({ message: 'Bonus awarded successfully' });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
+        await notificationService.createNotification(employeeId, 'performance', `Bonus awarded: $${amount}.`, { managerId, amount });
+        res.status(201).json({ message: 'Bonus awarded' });
+    } catch (err) { res.status(500).json({ error: err.message }); }
 };
 
 exports.getBonusHistory = async (req, res) => {
     const { employeeId } = req.params;
     const requesterId = req.user.id;
-    const role = req.user.role?.toLowerCase();
-
     const targetId = employeeId || requesterId;
 
     try {
@@ -295,12 +230,6 @@ exports.getBonusHistory = async (req, res) => {
             `,
             args: [targetId]
         });
-
         res.json(result.rows);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+    } catch (error) { res.status(500).json({ error: error.message }); }
 };
-
-
-

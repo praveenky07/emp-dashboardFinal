@@ -35,9 +35,9 @@ api.interceptors.response.use(
        }
     }
 
-    // Handle 401 Unauthorized (Session Expired)
-    if (error.response && error.response.status === 401) {
-      console.warn("Unauthorized - clearing session");
+    // Handle 401 Unauthorized or 403 Forbidden (Session Expired/Invalid)
+    if (error.response && (error.response.status === 401 || error.response.status === 403)) {
+      console.warn("Session expired or invalid - clearing session");
       localStorage.removeItem('token');
       localStorage.removeItem('user');
       // Only redirect if we are not already on the login page

@@ -72,9 +72,10 @@ const PerformancePage = () => {
                 api.get('/performance/bonus')
             ]);
 
-            const transformedChartData = perfRes.data.labels.map((label, index) => ({
+            const perfData = perfRes.data || { labels: [], data: [] };
+            const transformedChartData = (perfData.labels || []).map((label, index) => ({
                 date: label,
-                work_duration: perfRes.data.data[index]
+                work_duration: perfData.data ? perfData.data[index] : 0
             }));
 
             setStats({ ...statsRes.data, chartData: transformedChartData });
@@ -367,12 +368,28 @@ const PerformancePage = () => {
                     <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-1.5">
                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Rating Matrix (1-5)</label>
-                            <input 
-                                type="number" min="1" max="5" required
-                                value={reviewForm.rating}
-                                onChange={(e) => setReviewForm({ ...reviewForm, rating: e.target.value })}
-                                className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold opacity-100"
-                            />
+                            <div className="flex items-center gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                            {[1, 2, 3, 4, 5].map((star) => (
+                                <button
+                                    key={star}
+                                    type="button"
+                                    onClick={() => setReviewForm({ ...reviewForm, rating: star })}
+                                    className="focus:outline-none transition-transform active:scale-90"
+                                >
+                                    <Star 
+                                        size={28} 
+                                        className={`${
+                                            star <= reviewForm.rating 
+                                            ? 'fill-amber-400 text-amber-400' 
+                                            : 'text-slate-300'
+                                        } transition-colors`} 
+                                    />
+                                </button>
+                            ))}
+                            <span className="ml-auto text-[10px] font-black text-indigo-600 uppercase tracking-widest bg-indigo-50 px-3 py-1 rounded-full">
+                                {reviewForm.rating}/5 Score
+                            </span>
+                        </div>
                         </div>
                         <div className="space-y-1.5">
                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Review Cycle</label>

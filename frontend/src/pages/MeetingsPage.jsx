@@ -22,6 +22,8 @@ import {
   startMeeting, 
   getAvailableUsers 
 } from '../services/meetingService';
+import MeetingRoom from '../components/MeetingRoom';
+import { useNavigate } from 'react-router-dom';
 
 // --- MODAL COMPONENT ---
 const CreateMeetingModal = ({ isOpen, onClose, onCreate }) => {
@@ -228,78 +230,7 @@ const CreateMeetingModal = ({ isOpen, onClose, onCreate }) => {
   );
 };
 
-// --- STABLE MEETING ROOM COMPONENT ---
-const MeetingRoom = ({ meeting, onLeave, currentUser }) => {
-  return (
-    <div className="fixed inset-0 z-[200] bg-gray-900 flex flex-col items-center justify-center font-sans overflow-hidden">
-      <div className="absolute top-0 left-0 w-full h-full overflow-hidden -z-10 opacity-20">
-         <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-indigo-500 rounded-full blur-[150px]" />
-         <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-blue-500 rounded-full blur-[150px]" />
-      </div>
-
-      <header className="absolute top-0 left-0 w-full p-8 flex justify-between items-center bg-transparent">
-         <div className="flex items-center gap-4">
-            <div className="w-4 h-4 bg-red-500 rounded-full animate-pulse shadow-[0_0_15px_rgba(239,68,68,0.8)]" />
-            <span className="text-white font-black uppercase tracking-[0.3em] text-xs">Live Session</span>
-         </div>
-         <button 
-           onClick={onLeave}
-           className="bg-white/10 hover:bg-red-500 text-white hover:text-white px-8 py-4 rounded-2xl font-black transition-all backdrop-blur-md flex items-center gap-2 group"
-         >
-           <LogOut size={18} className="group-hover:-translate-x-1 transition-transform" />
-           END SESSION
-         </button>
-      </header>
-
-      <div className="max-w-4xl w-full p-12 bg-white/5 backdrop-blur-3xl rounded-[4rem] border border-white/10 flex flex-col items-center gap-12 shadow-2xl relative overflow-hidden">
-         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500" />
-         
-         <div className="w-32 h-32 bg-gradient-to-br from-indigo-600 to-blue-700 rounded-[3rem] flex items-center justify-center text-white shadow-2xl relative">
-            <Video size={48} />
-            <div className="absolute -top-2 -right-2 w-8 h-8 bg-black rounded-full border-4 border-white/10 flex items-center justify-center">
-               <div className="w-2 h-2 bg-green-500 rounded-full shadow-[0_0_10px_#22c55e]" />
-            </div>
-         </div>
-
-         <div className="text-center space-y-4">
-            <h2 className="text-5xl font-black text-white tracking-tighter">{meeting.title || meeting.purpose}</h2>
-            <p className="text-indigo-300 font-bold uppercase tracking-[0.4em] text-xs">Waiting for participants to establish video...</p>
-         </div>
-
-         <div className="grid grid-cols-2 md:grid-cols-4 gap-6 w-full">
-            {[1,2,3,4].map(i => (
-              <div key={i} className="aspect-square bg-white/10 rounded-[2.5rem] border border-white/5 flex flex-col items-center justify-center gap-4 group hover:bg-white/20 transition-all cursor-pointer">
-                 <div className="w-12 h-12 rounded-full bg-indigo-500/20 flex items-center justify-center text-white font-bold opacity-50 group-hover:opacity-100 transition-opacity">
-                    {i === 1 ? currentUser.name[0] : '?'}
-                 </div>
-                 <span className="text-[10px] font-black text-white/40 uppercase tracking-widest">{i === 1 ? 'You' : 'Remote User'}</span>
-              </div>
-            ))}
-         </div>
-
-         <div className="pt-8 flex gap-6">
-            <div className="flex flex-col items-center gap-2">
-               <div className="w-16 h-16 rounded-full bg-white/10 border border-white/10 flex items-center justify-center text-white hover:bg-white hover:text-black transition-all cursor-pointer">
-                  <Video size={20} />
-               </div>
-               <span className="text-[10px] font-bold text-white/30 uppercase">Toggle Video</span>
-            </div>
-            <div className="flex flex-col items-center gap-2">
-               <div className="w-16 h-16 rounded-full bg-white/10 border border-white/10 flex items-center justify-center text-white hover:bg-white hover:text-black transition-all cursor-pointer">
-                  <User size={20} />
-               </div>
-               <span className="text-[10px] font-bold text-white/30 uppercase">Participants</span>
-            </div>
-         </div>
-      </div>
-
-      <div className="mt-12 flex items-center gap-3 text-white/20 font-black uppercase tracking-[0.5em] text-[10px]">
-         <Globe size={14} />
-         Secure Workspace Encrypted
-      </div>
-    </div>
-  );
-};
+// Internal MeetingRoom removed - using shared component
 
 // --- MAIN MEETINGS PAGE ---
 const MeetingsPage = () => {
@@ -307,6 +238,7 @@ const MeetingsPage = () => {
     const [activeMeeting, setActiveMeeting] = useState(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [loading, setLoading] = useState(true);
+    const navigate = useNavigate();
   
     // Fetch user context
     const currentUser = (() => {

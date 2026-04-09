@@ -97,18 +97,23 @@ exports.stopBreak = async (req, res) => {
 exports.getSessionStatus = async (req, res) => {
   const userId = req.user.id;
   try {
+    const today = new Date().toISOString().split('T')[0];
     const attendance = await db.execute({
-      sql: 'SELECT * FROM attendance WHERE user_id = ? AND clock_out IS NULL',
-      args: [userId]
+      sql: 'SELECT * FROM attendance WHERE user_id = ? AND date = ?',
+      args: [userId, today]
     });
     const brk = await db.execute({
       sql: 'SELECT * FROM breaks WHERE user_id = ? AND end_time IS NULL',
       args: [userId]
     });
 
+    const shift = attendance.rows[0];
+
     res.json({
-      active: attendance.rows.length > 0,
-      startTime: attendance.rows[0]?.clock_in,
+      active: shift && !shift.clock_out ? true : false,
+      completed: shift && shift.clock_out ? true : false,
+      startTime: shift?.clock_in,
+      endTime: shift?.clock_out,
       onBreak: brk.rows.length > 0,
       breakType: brk.rows[0]?.type
     });

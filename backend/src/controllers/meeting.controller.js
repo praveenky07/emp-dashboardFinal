@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const emailService = require('../utils/email');
 const { getIo } = require('../socket');
 const { emitMeetingCreated, emitMeetingUpdated, emitMeetingEnded, emitMeetingJoined } = require('../socket/events');
+const notificationService = require('../services/notification.service');
 
 exports.createMeeting = async (req, res) => {
   const { title, duration, participants, dateTime, category } = req.body;
@@ -30,6 +31,13 @@ exports.createMeeting = async (req, res) => {
     
     try {
         emitMeetingCreated(getIo(), { meetingId, createdBy, title, participants: participants || [] });
+        
+        // Notify each participant
+        if (participants && Array.isArray(participants)) {
+            for (const pId of participants) {
+                await notificationService.createNotification(pId, 'meeting', `You have been invited to a new meeting: ${title}`, { meetingId, type: 'invitation' });
+            }
+        }
     } catch(e) { console.error('Socket emit error', e) }
 
     res.status(201).json({
@@ -239,6 +247,15 @@ exports.joinMeeting = async (req, res) => {
         
         try {
             emitMeetingJoined(getIo(), { meetingId: id, userId });
+            
+            // Notify Host
+            const meetingCheck = await db.execute({ sql: 'SELECT created_by, purpose FROM meetings WHERE id = ?', args: [id] });
+            if (meetingCheck.rows.length > 0) {
+                const hostId = meetingCheck.rows[0].created_by;
+                const userCheck = await db.execute({ sql: 'SELECT name FROM users WHERE id = ?', args: [userId] });
+                const userName = userCheck.rows[0]?.name || 'Someone';
+                await notificationService.createNotification(hostId, 'meeting', `${userName} has joined your meeting: ${meetingCheck.rows[0].purpose}`, { meetingId: id, userId });
+            }
         } catch(e) { console.error('Socket error', e) }
         
         res.json({ message: 'Joined meeting' });

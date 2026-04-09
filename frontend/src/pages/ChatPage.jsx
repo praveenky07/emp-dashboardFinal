@@ -23,9 +23,12 @@ import {
     VideoOff,
     PhoneOff,
     Maximize2,
-    Trash
+    Trash,
+    Ship,
+    MessageSquare
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 
 const ChatPage = () => {
     const { user: currentUser } = useUser();
@@ -38,21 +41,15 @@ const ChatPage = () => {
     const [uploading, setUploading] = useState(false);
     const [onlineUsers, setOnlineUsers] = useState(new Set());
     
-    // Calling State
-    const [callStatus, setCallStatus] = useState('idle'); // idle, calling, incoming, in-call
+    const [callStatus, setCallStatus] = useState('idle'); // idle, incoming
     const [incomingCall, setIncomingCall] = useState(null);
-    const [localStream, setLocalStream] = useState(null);
-    const [remoteStream, setRemoteStream] = useState(null);
     const [callType, setCallType] = useState('video'); // audio, video
-    const [isMuted, setIsMuted] = useState(false);
-    const [isVideoOff, setIsVideoOff] = useState(false);
     const [showMenu, setShowMenu] = useState(false);
+    const [mobileSidebarOpen, setMobileSidebarOpen] = useState(true);
 
     const messagesEndRef = useRef(null);
     const fileInputRef = useRef(null);
-    const pc = useRef(null);
-    const localVideoRef = useRef(null);
-    const remoteVideoRef = useRef(null);
+    const navigate = useNavigate();
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -73,45 +70,29 @@ const ChatPage = () => {
             setOnlineUsers(new Set(userIds));
         });
 
-        // Calling Signaling
+        // ZEGO Signaling
         socket.on('incoming-call', (data) => {
-            console.log('[CALL] Incoming call from:', data.name);
+            console.log('[ZEGO] Incoming call from:', data.name, 'Room:', data.roomId);
             setIncomingCall(data);
             setCallStatus('incoming');
             setCallType(data.type);
         });
 
-        socket.on('call-answered', async (data) => {
-            console.log('[CALL] Call answered');
-            if (pc.current) {
-                await pc.current.setRemoteDescription(new RTCSessionDescription(data.answer));
-                setCallStatus('in-call');
-            }
-        });
-
-        socket.on('ice-candidate', async (data) => {
-            if (pc.current && data.candidate) {
-                try {
-                    await pc.current.addIceCandidate(new RTCIceCandidate(data.candidate));
-                } catch (e) { console.error('[PC] Error adding candidate:', e); }
-            }
-        });
-
         socket.on('call-rejected', () => {
-             console.log('[CALL] Call rejected');
-             handleEndCallLocally();
+             console.log('[ZEGO] Call rejected');
+             setCallStatus('idle');
+             setIncomingCall(null);
         });
 
         socket.on('call-ended', () => {
-             console.log('[CALL] Peer ended call');
-             handleEndCallLocally();
+             console.log('[ZEGO] Peer ended call');
+             setCallStatus('idle');
+             setIncomingCall(null);
         });
 
         return () => {
             socket.off('activeUsersUpdated');
             socket.off('incoming-call');
-            socket.off('call-answered');
-            socket.off('ice-candidate');
             socket.off('call-rejected');
             socket.off('call-ended');
         };
@@ -134,20 +115,34 @@ const ChatPage = () => {
         };
 
         fetchHistory();
+        setMobileSidebarOpen(false); // Close on mobile after selection
 
         if (selectedChat.type === 'group') {
             socket.emit('join_room', selectedChat.id);
         }
 
         const handlePrivateMessage = (data) => {
-            if (selectedChat.type === 'private' && (data.senderId === selectedChat.id || data.senderId === currentUser.id)) {
-                setMessages(prev => [...prev, { ...data, sender_id: data.senderId }]);
+            console.log('[SOCKET] Received Private Message:', data);
+            // Use String() for safe ID comparison (handle string vs number from DB/Socket)
+            const isTargetMessage = String(data.senderId) === String(selectedChat.id) || String(data.senderId) === String(currentUser.id);
+            if (selectedChat.type === 'private' && isTargetMessage) {
+                setMessages(prev => [...prev, { 
+                    ...data, 
+                    sender_id: data.senderId,
+                    created_at: new Date().toISOString() 
+                }]);
             }
         };
 
         const handleGroupMessage = (data) => {
-            if (selectedChat.type === 'group' && data.groupId === selectedChat.id) {
-                setMessages(prev => [...prev, { ...data, sender_id: data.senderId, group_id: data.groupId }]);
+            console.log('[SOCKET] Received Group Message:', data);
+            if (selectedChat.type === 'group' && String(data.groupId) === String(selectedChat.id)) {
+                setMessages(prev => [...prev, { 
+                    ...data, 
+                    sender_id: data.senderId, 
+                    group_id: data.groupId,
+                    created_at: new Date().toISOString() 
+                }]);
             }
         };
 
@@ -158,125 +153,50 @@ const ChatPage = () => {
             socket.off('private_message', handlePrivateMessage);
             socket.off('group_message', handleGroupMessage);
         };
-    }, [selectedChat, currentUser.id]);
+    }, [selectedChat?.id, currentUser.id]);
     
     useEffect(() => {
         scrollToBottom();
     }, [messages]);
 
-
-    useEffect(() => {
-        if (localStream && localVideoRef.current) localVideoRef.current.srcObject = localStream;
-    }, [localStream, callStatus]);
-
-    useEffect(() => {
-        if (remoteStream && remoteVideoRef.current) remoteVideoRef.current.srcObject = remoteStream;
-    }, [remoteStream, callStatus]);
-
-    const handleEndCallLocally = () => {
-        if (pc.current) { pc.current.close(); pc.current = null; }
-        if (localStream) { localStream.getTracks().forEach(t => t.stop()); setLocalStream(null); }
-        setRemoteStream(null);
+    const handleRejectCall = () => {
+        if (incomingCall) socket.emit('reject-call', { from: incomingCall.from });
         setCallStatus('idle');
         setIncomingCall(null);
     };
 
-    const handleRejectCall = () => {
-        if (incomingCall) socket.emit('reject-call', { from: incomingCall.from });
-        handleEndCallLocally();
-    };
-
-    const handleEndCall = () => {
-        if (selectedChat) socket.emit('end-call', { to: selectedChat.id });
-        if (incomingCall) socket.emit('end-call', { to: incomingCall.from });
-        handleEndCallLocally();
-    };
-
-    const createPeerConnection = (targetId) => {
-        const config = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
-        pc.current = new RTCPeerConnection(config);
-
-        pc.current.onicecandidate = (e) => {
-            if (e.candidate) {
-                socket.emit('ice-candidate', { to: targetId, candidate: e.candidate });
-            }
-        };
-
-        pc.current.ontrack = (e) => {
-            console.log('[PC] Remote track received');
-            setRemoteStream(e.streams[0]);
-        };
-
-        if (localStream) {
-            localStream.getTracks().forEach(t => pc.current.addTrack(t, localStream));
-        }
-    };
-
     const startCall = async (type) => {
         if (!selectedChat) return;
+        
+        // Generate a unique room ID by combining and sorting user IDs
+        const ids = [currentUser.id, selectedChat.id].sort();
+        const roomId = `room_${ids[0]}_${ids[1]}`;
+        
         setCallType(type);
-        setCallStatus('calling');
+        
+        // Send signal to receiver
+        socket.emit('call-user', {
+            to: selectedChat.id,
+            from: currentUser.id,
+            name: currentUser.name,
+            roomId: roomId,
+            type
+        });
 
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ 
-                audio: true, 
-                video: type === 'video' 
-            });
-            setLocalStream(stream);
-
-            createPeerConnection(selectedChat.id);
-
-            const offer = await pc.current.createOffer();
-            await pc.current.setLocalDescription(offer);
-
-            socket.emit('call-user', {
-                to: selectedChat.id,
-                from: currentUser.id,
-                name: currentUser.name,
-                offer,
-                type
-            });
-        } catch (err) {
-            console.error('[CALL] Failed to access media products:', err);
-            setCallStatus('idle');
-        }
+        // Navigate to call room
+        navigate(`/call/${roomId}`, { state: { callType: type } });
     };
 
     const answerCall = async () => {
         if (!incomingCall) return;
-        setCallStatus('in-call');
+        
+        const roomId = incomingCall.roomId;
+        const type = incomingCall.type;
 
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ 
-                audio: true, 
-                video: incomingCall.type === 'video' 
-            });
-            setLocalStream(stream);
-
-            // Need to set local stream in local PC manually because tracks might be added after createPC
-            const config = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
-            pc.current = new RTCPeerConnection(config);
-
-            pc.current.onicecandidate = (e) => {
-                if (e.candidate) socket.emit('ice-candidate', { to: incomingCall.from, candidate: e.candidate });
-            };
-
-            pc.current.ontrack = (e) => setRemoteStream(e.streams[0]);
-
-            stream.getTracks().forEach(t => pc.current.addTrack(t, stream));
-
-            await pc.current.setRemoteDescription(new RTCSessionDescription(incomingCall.offer));
-            const answer = await pc.current.createAnswer();
-            await pc.current.setLocalDescription(answer);
-
-            socket.emit('make-answer', {
-                to: incomingCall.from,
-                answer
-            });
-        } catch (err) {
-            console.error('[CALL] Answer failed:', err);
-            handleRejectCall();
-        }
+        // Navigate to call room
+        navigate(`/call/${roomId}`, { state: { callType: type } });
+        setCallStatus('idle');
+        setIncomingCall(null);
     };
 
     const handleSendMessage = (e, fileUrl = null, fileType = null) => {
@@ -338,10 +258,21 @@ const ChatPage = () => {
     ];
 
     return (
-        <div className="h-[calc(100vh-120px)] flex bg-white rounded-[32px] border border-slate-100 shadow-xl shadow-slate-200/50 overflow-hidden">
+        <div className="h-[calc(100vh-100px)] flex bg-white rounded-[32px] border border-slate-100 shadow-xl overflow-hidden relative">
+            {/* Mobile Toggle */}
+            <button 
+                onClick={() => setMobileSidebarOpen(!mobileSidebarOpen)}
+                className="lg:hidden absolute bottom-24 right-6 z-50 p-4 bg-indigo-600 text-white rounded-full shadow-2xl active:scale-95 transition-all"
+            >
+                <MessageSquare size={24} />
+            </button>
+
             {/* Sidebar */}
-            <div className="w-80 border-r border-slate-50 flex flex-col bg-slate-50/50">
-                <div className="p-6 space-y-6">
+            <div className={`
+                ${mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+                absolute lg:relative z-40 w-full lg:w-80 h-full border-r border-slate-50 flex flex-col bg-slate-50 transition-transform duration-300 ease-in-out
+            `}>
+            <div className="p-6 space-y-6">
                     <div className="flex items-center justify-between">
                         <h1 className="text-2xl font-black text-slate-900 tracking-tight">Messages</h1>
                         <button className="p-2 bg-white rounded-xl shadow-sm border border-slate-100 text-slate-400 hover:text-indigo-600 transition-all">
@@ -459,7 +390,7 @@ const ChatPage = () => {
                         {/* Messages Area */}
                         <div className="flex-1 overflow-y-auto p-8 space-y-6 bg-slate-50/30 custom-scrollbar">
                             {messages.map((msg, i) => {
-                                const isMine = msg.sender_id === currentUser.id;
+                                const isMine = String(msg.sender_id) === String(currentUser.id);
                                 return (
                                     <div key={msg.id || i} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
                                         <div className={`max-w-md ${isMine ? 'order-1' : 'order-2'}`}>
@@ -577,84 +508,6 @@ const ChatPage = () => {
                                     </button>
                                 </div>
                             </motion.div>
-                        </motion.div>
-                    )}
-
-                    {(callStatus === 'calling' || callStatus === 'in-call') && (
-                        <motion.div 
-                            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                            className="fixed inset-0 bg-slate-950 z-[110] flex flex-col"
-                        >
-                            {/* Remote Video (Full Screen) */}
-                            <div className="flex-1 relative bg-slate-900 overflow-hidden flex items-center justify-center">
-                                {callType === 'video' ? (
-                                    <video 
-                                        ref={remoteVideoRef} 
-                                        autoPlay 
-                                        playsInline 
-                                        className="w-full h-full object-cover"
-                                    />
-                                ) : (
-                                    <div className="text-center">
-                                        <div className="w-32 h-32 bg-indigo-600 rounded-[48px] mx-auto mb-6 flex items-center justify-center text-white text-4xl font-black shadow-2xl">
-                                            {selectedChat?.name[0] || incomingCall?.name[0]}
-                                        </div>
-                                        <h2 className="text-3xl font-black text-white">{selectedChat?.name || incomingCall?.name}</h2>
-                                        <p className="text-indigo-400 font-bold uppercase tracking-[0.2em] text-xs mt-4">Voice Call Connected</p>
-                                    </div>
-                                )}
-
-                                {/* Local Preview (Picture in Picture) */}
-                                {callType === 'video' && (
-                                    <div className="absolute top-8 right-8 w-48 aspect-video bg-slate-800 rounded-3xl border-2 border-white/10 shadow-2xl overflow-hidden z-10">
-                                        <video 
-                                            ref={localVideoRef} 
-                                            autoPlay 
-                                            muted 
-                                            playsInline 
-                                            className="w-full h-full object-cover"
-                                        />
-                                    </div>
-                                )}
-
-                                {callStatus === 'calling' && (
-                                    <div className="absolute inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center">
-                                        <div className="text-center">
-                                            <p className="text-white text-xl font-black animate-pulse">Calling...</p>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Call Controls Bar */}
-                            <div className="h-32 bg-slate-900/50 backdrop-blur-md border-t border-white/5 flex items-center justify-center gap-6 px-8">
-                                <button 
-                                    onClick={() => setIsMuted(!isMuted)}
-                                    className={`p-5 rounded-[24px] transition-all ${isMuted ? 'bg-white text-slate-900' : 'bg-white/10 text-white hover:bg-white/20'}`}
-                                >
-                                    {isMuted ? <MicOff size={24} /> : <Mic size={24} />}
-                                </button>
-                                
-                                {callType === 'video' && (
-                                    <button 
-                                        onClick={() => setIsVideoOff(!isVideoOff)}
-                                        className={`p-5 rounded-[24px] transition-all ${isVideoOff ? 'bg-white text-slate-900' : 'bg-white/10 text-white hover:bg-white/20'}`}
-                                    >
-                                        {isVideoOff ? <VideoOff size={24} /> : <Video size={24} />}
-                                    </button>
-                                )}
-
-                                <button 
-                                    onClick={handleEndCall}
-                                    className="p-6 bg-red-500 text-white rounded-[32px] hover:bg-red-600 hover:scale-105 active:scale-95 transition-all shadow-2xl shadow-red-500/20"
-                                >
-                                    <PhoneOff size={28} />
-                                </button>
-
-                                <button className="p-5 bg-white/10 text-white rounded-[24px] hover:bg-white/20 transition-all">
-                                    <Maximize2 size={24} />
-                                </button>
-                            </div>
                         </motion.div>
                     )}
                 </AnimatePresence>

@@ -13,6 +13,7 @@ exports.getAllUsers = async (req, res) => {
       LEFT JOIN users m ON u.manager_id = m.id
       LEFT JOIN employees e ON u.id = e.user_id
       LEFT JOIN departments d ON e.department_id = d.id
+      ORDER BY u.id ASC
     `);
     res.json(result.rows);
   } catch (error) {
@@ -198,22 +199,29 @@ exports.getActiveSessions = async (req, res) => {
 
 exports.getAdminStats = async (req, res) => {
   try {
-    const [u, s, l, m, d, tl] = await Promise.all([
+    const today = new Date().toISOString().split('T')[0];
+    const [u, s, pl, sm, d, al] = await Promise.all([
       db.execute('SELECT COUNT(*) as count FROM users'),
-      db.execute('SELECT COUNT(*) as count FROM attendance WHERE clock_out IS NULL'),
+      db.execute({
+          sql: 'SELECT COUNT(DISTINCT user_id) as count FROM attendance WHERE clock_out IS NULL AND date = ?',
+          args: [today]
+      }),
       db.execute("SELECT COUNT(*) as count FROM leaves WHERE status = 'Pending'"),
-      db.execute('SELECT COUNT(*) as count FROM meetings'),
+      db.execute({
+          sql: "SELECT COUNT(*) as count FROM meetings WHERE scheduled_at LIKE ?",
+          args: [`${today}%`]
+      }),
       db.execute('SELECT COUNT(*) as count FROM departments'),
-      db.execute('SELECT COUNT(*) as count FROM leaves')
+      db.execute("SELECT COUNT(*) as count FROM leaves WHERE status = 'Approved'")
     ]);
 
     res.json({
       totalUsers: u.rows[0].count,
       activeSessions: s.rows[0].count,
-      pendingLeaves: l.rows[0].count,
-      totalMeetings: m.rows[0].count,
+      pendingLeaves: pl.rows[0].count,
+      scheduledMeetings: sm.rows[0].count,
       totalDepartments: d.rows[0].count,
-      totalLeaves: tl.rows[0].count
+      approvedLeaves: al.rows[0].count
     });
   } catch (error) {
     res.status(500).json({ error: error.message });

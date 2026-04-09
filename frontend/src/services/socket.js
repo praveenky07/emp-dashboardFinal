@@ -1,9 +1,7 @@
 import { io } from "socket.io-client";
 
-// Get URL from env - prioritize LOCAL for testing but fallback to provided URLs
-const SOCKET_URL =
-    import.meta.env.VITE_SOCKET_URL ||
-    import.meta.env.VITE_API_BASE_URL?.replace("/api", "");
+// Production-first socket URL strictly following VITE_SOCKET_URL
+const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || window.location.origin;
 
 console.log("[DEBUG] Connecting socket to:", SOCKET_URL);
 

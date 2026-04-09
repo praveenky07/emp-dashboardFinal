@@ -14,6 +14,7 @@ import MeetingsPage from './pages/MeetingsPage';
 import AttendancePage from './pages/AttendancePage';
 import ChatPage from './pages/ChatPage';
 import JoinMeeting from './pages/JoinMeeting';
+import VideoCall from './pages/VideoCall';
 
 import Settings from './pages/Settings';
 import AuditLogs from './pages/AuditLogs';
@@ -80,6 +81,7 @@ function App() {
                <Route path="/attendance" element={<AttendancePage />} />
                <Route path="/chat" element={<ChatPage />} />
                <Route path="/meet/:meetingId" element={<JoinMeeting />} />
+               <Route path="/call/:roomId" element={<VideoCall />} />
 
                <Route path="/settings" element={<Settings />} />
                <Route path="/admin/logs" element={<ProtectedRoute allowedRoles={['admin']}><AuditLogs /></ProtectedRoute>} />

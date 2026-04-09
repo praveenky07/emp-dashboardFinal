@@ -17,10 +17,11 @@ const initSocket = (server) => {
         console.log(`[SOCKET] User connected: ${socket.id}`);
 
         socket.on("userOnline", (userId) => {
-            onlineUsers.set(userId, socket.id);
+            const sid = String(userId);
+            onlineUsers.set(sid, socket.id);
             // Broadcast the list of online user IDs
             io.emit('activeUsersUpdated', Array.from(onlineUsers.keys()));
-            console.log(`[SOCKET] User ${userId} is now online.`);
+            console.log(`[SOCKET] User ${sid} (${socket.id}) is now online.`);
         });
 
         socket.on("join_room", (room) => {
@@ -42,7 +43,7 @@ const initSocket = (server) => {
                     args: [receiverId, 'message', `${senderName || 'Someone'} sent you a message`, JSON.stringify({ senderId, type: 'private' })]
                 });
 
-                const receiverSocketId = onlineUsers.get(receiverId);
+                const receiverSocketId = onlineUsers.get(String(receiverId));
                 if (receiverSocketId) {
                     io.to(receiverSocketId).emit("private_message", { senderId, message, file_url, file_type, senderName });
                     io.to(receiverSocketId).emit("new_notification", {
@@ -66,8 +67,6 @@ const initSocket = (server) => {
         });
 
         socket.on("disconnect", () => {
-
-             // Find and remove the user from mapping
              let disconnectedUserId = null;
              for (const [userId, sId] of onlineUsers.entries()) {
                  if (sId === socket.id) {
@@ -82,52 +81,33 @@ const initSocket = (server) => {
              }
         });
         
-        // Handle explicit logout disconnection correctly dropping online user tracking instantly
         socket.on("userOffline", (userId) => {
-            onlineUsers.delete(userId);
+            onlineUsers.delete(String(userId));
             io.emit('activeUsersUpdated', Array.from(onlineUsers.keys()));
         });
 
-        // WebRTC Signaling
+        // WebRTC/Signaling
         socket.on("call-user", (data) => {
-            const receiverSocketId = onlineUsers.get(data.to);
+            const receiverSocketId = onlineUsers.get(String(data.to));
             if (receiverSocketId) {
                 io.to(receiverSocketId).emit("incoming-call", {
                     from: data.from,
                     name: data.name,
-                    offer: data.offer,
+                    roomId: data.roomId,
                     type: data.type
                 });
             }
         });
 
-        socket.on("make-answer", (data) => {
-            const receiverSocketId = onlineUsers.get(data.to);
-            if (receiverSocketId) {
-                io.to(receiverSocketId).emit("call-answered", {
-                    answer: data.answer
-                });
-            }
-        });
-
-        socket.on("ice-candidate", (data) => {
-            const receiverSocketId = onlineUsers.get(data.to);
-            if (receiverSocketId) {
-                io.to(receiverSocketId).emit("ice-candidate", {
-                    candidate: data.candidate
-                });
-            }
-        });
-
         socket.on("reject-call", (data) => {
-            const receiverSocketId = onlineUsers.get(data.from);
+            const receiverSocketId = onlineUsers.get(String(data.from));
             if (receiverSocketId) {
                 io.to(receiverSocketId).emit("call-rejected");
             }
         });
 
         socket.on("end-call", (data) => {
-            const receiverSocketId = onlineUsers.get(data.to);
+            const receiverSocketId = onlineUsers.get(String(data.to));
             if (receiverSocketId) {
                 io.to(receiverSocketId).emit("call-ended");
             }

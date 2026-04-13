@@ -61,6 +61,8 @@ const ManagerDashboard = () => {
     const [loading, setLoading] = useState(true);
     const [teamLeaves, setTeamLeaves] = useState([]);
     const [teamLogs, setTeamLogs] = useState([]);
+    const [stats, setStats] = useState({ directReports: 0, pendingActions: 0, availability: 0, teamSyncs: 0 });
+    const [employeesOptions, setEmployeesOptions] = useState([]);
 
     // UI state
     const [activeModal, setActiveModal] = useState(null); // 'reports', 'approvals', 'productivity', 'capacity', 'addMember', 'pulseFrontend', 'pulseDeadlines'
@@ -82,24 +84,37 @@ const ManagerDashboard = () => {
 
     const fetchData = async () => {
         try {
-            const [teamRes, leavesRes, metricsRes, teamLeavesRes, balanceRes, teamBalRes] = await Promise.all([
-                api.get('/manager/team'),
-                api.get('/leave/all-pending'),
-                api.get('/admin/metrics'),
-                api.get('/leave/team'),
-                api.get('/leave/balance/my'),
-                api.get('/leave/balance/all')
+            setLoading(true);
+            
+            // Execute non-critical stats independently
+            api.get('/admin/metrics').then(res => setMetrics(res.data)).catch(() => {});
+            api.get('/leave/balance/my').then(res => setLeaveBalance(res.data)).catch(() => {});
+            api.get('/leave/balance/all').then(res => setTeamBalances(res.data)).catch(() => {});
+            api.get('/manager/stats').then(res => setStats(res.data)).catch(() => {});
+            
+            // Essential data
+            const [teamRes, pendingRes, teamLeavesRes, membersRes] = await Promise.all([
+                api.get('/manager/team').catch(() => ({ data: [] })),
+                api.get('/leave/all-pending').catch(() => ({ data: [] })),
+                api.get('/leave/team').catch(() => ({ data: [] })),
+                api.get('/users?role=employee').catch(() => ({ data: [] }))
             ]);
-            setTeam(Array.isArray(teamRes?.data) ? teamRes.data : []);
-            setLeaves(Array.isArray(leavesRes?.data) ? leavesRes.data : []);
-            setMetrics(Array.isArray(metricsRes?.data) ? metricsRes.data : []);
-            setTeamLeaves(Array.isArray(teamLeavesRes?.data) ? teamLeavesRes.data : []);
-            setLeaveBalance(balanceRes?.data || { total_leaves: 0, used_leaves: 0, remaining_leaves: 0 });
-            setTeamBalances(teamBalRes?.data || []);
-            fetchProjects();
-            fetchManagedTasks();
-        } catch (err) { console.error(err) }
-        finally { setLoading(false) }
+
+            setTeam(teamRes.data);
+            setLeaves(pendingRes.data);
+            setTeamLeaves(teamLeavesRes.data);
+            setEmployeesOptions(membersRes.data);
+            
+            // Always fetch projects and tasks
+            await Promise.all([
+                fetchProjects(),
+                fetchManagedTasks()
+            ]);
+        } catch (err) { 
+            console.error('Fetch error:', err);
+        } finally { 
+            setLoading(false);
+        }
     };
 
     const fetchManagedTasks = async () => {
@@ -156,11 +171,14 @@ const ManagerDashboard = () => {
         try {
             setProjectLoading(true);
             await api.post('/projects', newProject);
-            setNewProject({ name: '', description: '', deadline: '' });
-            fetchProjects();
-        } catch (err) { handleError(err); }
-
-        finally { setProjectLoading(false); }
+            alert('Project Deployed Successfully!');
+            setNewProject({ name: '', description: '', deadline: '', status: 'Planning' });
+            fetchData();
+        } catch (err) { 
+            handleError(err); 
+        } finally { 
+            setProjectLoading(false); 
+        }
     };
 
     const handleAssignProject = async (e) => {
@@ -181,7 +199,7 @@ const ManagerDashboard = () => {
             setTaskLoading(true);
             await api.post('/tasks', newTask);
             setNewTask({ title: '', description: '', priority: 'Medium', due_date: '', assigned_to: '' });
-            fetchManagedTasks();
+            fetchData();
             alert('Task assigned successfully!');
         } catch (err) { handleError(err); }
         finally { setTaskLoading(false); }
@@ -228,7 +246,7 @@ const ManagerDashboard = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
                 <ManagerStatCard
                     label="Direct Reports"
-                    value={team.length}
+                    value={stats.directReports}
                     icon={Users}
                     color="text-indigo-600"
                     bgColor="bg-indigo-50"
@@ -236,7 +254,7 @@ const ManagerDashboard = () => {
                 />
                 <ManagerStatCard
                     label="Pending Actions"
-                    value={leaves.length}
+                    value={stats.pendingActions}
                     icon={Hourglass}
                     color="text-amber-600"
                     bgColor="bg-amber-50"
@@ -245,7 +263,7 @@ const ManagerDashboard = () => {
                 />
                 <ManagerStatCard
                     label="Availability"
-                    value={`${leaveBalance.remaining_leaves || 0}d`}
+                    value={`${stats.availability}d`}
                     icon={Calendar}
                     color="text-purple-600"
                     bgColor="bg-purple-50"
@@ -261,7 +279,7 @@ const ManagerDashboard = () => {
                 />
                 <ManagerStatCard
                     label="Team Syncs"
-                    value={metrics.find(m => m.label === 'Meetings')?.value || '12'}
+                    value={stats.teamSyncs}
                     icon={Users}
                     color="text-blue-600"
                     bgColor="bg-blue-50"
@@ -281,22 +299,25 @@ const ManagerDashboard = () => {
                             </div>
                         </div>
                         <div className="h-72 w-full font-sans">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <ReBarChart data={metrics.length > 0 ? metrics : [
-                                    { role: 'Engineering', avg_work_duration: 32000 },
-                                    { role: 'Product', avg_work_duration: 28000 },
-                                ]}>
-                                    <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="#f3f4f6" />
-                                    <XAxis dataKey="role" axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 11, fontWeight: 600 }} dy={10} />
-                                    <YAxis hide />
-                                    <Tooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '12px', border: '1px solid #e5e7eb', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', fontSize: '12px' }} labelStyle={{fontWeight: 'bold', color: '#111827', marginBottom: '4px'}} />
-                                    <Bar dataKey="avg_work_duration" radius={[6, 6, 6, 6]} barSize={32}>
-                                        {(metrics.length > 0 ? metrics : [1, 2, 3, 4]).map((entry, index) => (
-                                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} opacity={0.8} />
-                                        ))}
-                                    </Bar>
-                                </ReBarChart>
-                            </ResponsiveContainer>
+                            {metrics.length > 0 ? (
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <ReBarChart data={metrics}>
+                                        <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="#f3f4f6" />
+                                        <XAxis dataKey="role" axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 11, fontWeight: 600 }} dy={10} />
+                                        <YAxis hide />
+                                        <Tooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '12px', border: '1px solid #e5e7eb', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', fontSize: '12px' }} labelStyle={{fontWeight: 'bold', color: '#111827', marginBottom: '4px'}} />
+                                        <Bar dataKey="avg_work_duration" radius={[6, 6, 6, 6]} barSize={32}>
+                                            {metrics.map((entry, index) => (
+                                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} opacity={0.8} />
+                                            ))}
+                                        </Bar>
+                                    </ReBarChart>
+                                </ResponsiveContainer>
+                            ) : (
+                                <div className="h-full flex items-center justify-center border border-dashed border-[#e5e7eb] bg-slate-50 rounded-2xl">
+                                    <p className="font-bold text-[#6b7280] text-sm uppercase tracking-wider">No data available</p>
+                                </div>
+                            )}
                         </div>
                     </section>
 
@@ -471,7 +492,7 @@ const ManagerDashboard = () => {
                                             required
                                         >
                                             <option value="">Select Employee...</option>
-                                            {team.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                                            {employeesOptions.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                                         </select>
                                     </div>
                                     <div className="space-y-1.5">
@@ -511,7 +532,39 @@ const ManagerDashboard = () => {
                         </div>
                     </div>
 
-                    {/* Task List */}
+                    {/* Project & Task Lists */}
+                    <div className="space-y-6">
+                        {/* Project List */}
+                        <div className="bg-white p-8 rounded-[24px] border border-[#e5e7eb] shadow-sm">
+                            <h3 className="text-xl font-bold text-[#111827] mb-8 flex items-center gap-3">
+                                <Plus className="text-indigo-600" size={24} /> Active Projects
+                            </h3>
+                            <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                                {projects.length === 0 ? (
+                                    <div className="text-center py-10 bg-slate-50 rounded-2xl border border-dashed border-[#e5e7eb]">
+                                        <p className="font-bold uppercase tracking-wider text-[11px] text-[#6b7280]">No active projects</p>
+                                    </div>
+                                ) : (
+                                    projects.map(proj => (
+                                        <div key={proj.id} className="p-5 rounded-xl bg-white border border-[#f3f4f6] hover:border-indigo-500 hover:shadow-md transition-all group">
+                                            <div className="flex justify-between items-start mb-2">
+                                                <h4 className="text-sm font-bold text-[#111827] group-hover:text-indigo-600 transition-colors uppercase tracking-tight">{proj.name}</h4>
+                                                <span className="px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded text-[9px] font-bold uppercase tracking-wider">PROJECT</span>
+                                            </div>
+                                            <p className="text-[11px] text-slate-500 font-medium mb-3 line-clamp-2">{proj.description || 'No description provided.'}</p>
+                                            <div className="flex justify-between items-center pt-3 border-t border-[#f3f4f6]">
+                                                <div className="flex items-center gap-2 font-bold text-[10px] text-[#9ca3af] uppercase tracking-wider">
+                                                    <Clock size={12} /> Due: {proj.deadline}
+                                                </div>
+                                                <span className="text-[10px] font-bold text-slate-500">{proj.assigned_employees || 'Unassigned'}</span>
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Task List */}
                     <div className="bg-white p-8 rounded-[24px] border border-[#e5e7eb] shadow-sm">
                         <h3 className="text-xl font-bold text-[#111827] mb-8 flex items-center gap-3">
                             <Target className="text-indigo-600" size={24} /> Active Assignments
@@ -550,6 +603,7 @@ const ManagerDashboard = () => {
                                 ))
                             )}
                         </div>
+                    </div>
                     </div>
                 </div>
             </div>

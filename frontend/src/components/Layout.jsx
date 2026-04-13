@@ -36,7 +36,9 @@ const Sidebar = ({ user, isOpen, setIsOpen }) => {
   const menuItems = [
     { name: 'Dashboard', icon: LayoutDashboard, path: '/dashboard', roles: ['employee', 'manager', 'admin'] },
     { name: 'Employees', icon: Users, path: '/manager', roles: ['manager', 'admin'] },
+    { name: 'User Management', icon: ShieldCheck, path: '/users', roles: ['manager', 'admin'] },
     { name: 'Attendance', icon: Clock, path: '/attendance', roles: ['employee', 'manager', 'admin'] },
+    { name: 'Calendar', icon: Calendar, path: '/calendar', roles: ['employee', 'manager', 'admin'] },
     { name: 'Payroll', icon: Wallet, path: '/payroll', roles: ['employee', 'manager', 'admin'] },
     { name: 'Benefits', icon: Gift, path: '/benefits', roles: ['employee', 'manager', 'admin'] },
     { name: 'Leave', icon: Calendar, path: '/leave', roles: ['employee', 'manager', 'admin'] },

@@ -5,6 +5,7 @@ const { protect } = require('../middleware/auth.middleware');
 
 router.use(protect);
 
+router.get('/', userController.getUsers);
 router.get('/profile', userController.getProfile);
 router.get('/available', userController.getAvailableUsers);
 

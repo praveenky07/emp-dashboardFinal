@@ -19,12 +19,7 @@ initSocket(server);
 const { protect, authorize } = require('./middleware/auth.middleware');
 
 // Basic Middleware
-app.use(cors({
-    origin: '*', // Allow all origins for the desktop app to avoid CORS errors
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept']
-}));
+app.use(cors());
 
 // Rate Limiting - Security Best Practice for International Companies
 const limiter = rateLimit({
@@ -64,6 +59,7 @@ const attendanceRoutes = require('./routes/attendance.routes');
 const performanceRoutes = require('./routes/performance.routes');
 const chatRoutes = require('./routes/chat.routes');
 const uploadRoutes = require('./routes/upload.routes');
+const holidayRoutes = require('./routes/holiday.routes');
 
 
 // Public Routes
@@ -93,6 +89,7 @@ app.use('/api/attendance', attendanceRoutes);
 app.use('/api/performance', performanceRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/upload', uploadRoutes);
+app.use('/api/holidays', holidayRoutes);
 
 
 

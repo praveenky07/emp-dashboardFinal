@@ -12,7 +12,9 @@ import SupportPage from './pages/SupportPage';
 import PerformancePage from './pages/PerformancePage';
 import MeetingsPage from './pages/MeetingsPage';
 import AttendancePage from './pages/AttendancePage';
+import CalendarPage from './pages/CalendarPage';
 import ChatPage from './pages/ChatPage';
+import UserManagement from './pages/UserManagement';
 import JoinMeeting from './pages/JoinMeeting';
 import VideoCall from './pages/VideoCall';
 
@@ -79,7 +81,9 @@ function App() {
                <Route path="/leave" element={<LeaveTracker />} />
                <Route path="/meetings" element={<MeetingsPage />} />
                <Route path="/attendance" element={<AttendancePage />} />
+               <Route path="/calendar" element={<CalendarPage />} />
                <Route path="/chat" element={<ChatPage />} />
+               <Route path="/users" element={<ProtectedRoute allowedRoles={['admin', 'manager']}><UserManagement /></ProtectedRoute>} />
                <Route path="/meet/:meetingId" element={<JoinMeeting />} />
                <Route path="/call/:roomId" element={<VideoCall />} />
 

@@ -71,7 +71,7 @@ const initDb = async () => {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL,
         date TEXT NOT NULL,
-        clock_in TEXT NOT NULL,
+        clock_in TEXT,
         clock_out TEXT,
         total_hours REAL DEFAULT 0,
         status TEXT DEFAULT 'Present',
@@ -93,15 +93,25 @@ const initDb = async () => {
 
     // 5. Leave Management
     await db.execute(`
+      CREATE TABLE IF NOT EXISTS holidays(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        date TEXT NOT NULL UNIQUE,
+        title TEXT NOT NULL,
+        type TEXT CHECK(type IN('Public', 'Company', 'Optional')) DEFAULT 'Company'
+      )
+    `);
+
+    await db.execute(`
       CREATE TABLE IF NOT EXISTS leaves(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL,
         manager_id INTEGER NOT NULL,
         start_date TEXT NOT NULL,
         end_date TEXT NOT NULL,
-        type TEXT CHECK(type IN('Sick', 'Casual', 'Earned')) DEFAULT 'Casual',
+        total_days REAL DEFAULT 0,
+        type TEXT DEFAULT 'Casual',
         reason TEXT,
-        status TEXT CHECK(status IN('Pending', 'Approved', 'Rejected', 'Cancelled')) DEFAULT 'Pending',
+        status TEXT DEFAULT 'Pending',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY(user_id) REFERENCES users(id),
         FOREIGN KEY(manager_id) REFERENCES users(id)
@@ -121,7 +131,79 @@ const initDb = async () => {
       )
     `);
 
-    // 6. Meetings & Collaboration
+    // 6. Projects & Tasks
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS projects(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        description TEXT,
+        deadline TEXT,
+        progress INTEGER DEFAULT 0,
+        status TEXT DEFAULT 'On Track',
+        created_by INTEGER NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(created_by) REFERENCES users(id)
+      )
+    `);
+
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS project_assignments(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id INTEGER NOT NULL,
+        employee_id INTEGER NOT NULL,
+        assigned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(project_id) REFERENCES projects(id),
+        FOREIGN KEY(employee_id) REFERENCES users(id)
+      )
+    `);
+
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS tasks(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        description TEXT,
+        priority TEXT DEFAULT 'Medium',
+        due_date TEXT,
+        assigned_to INTEGER NOT NULL,
+        assigned_by INTEGER NOT NULL,
+        status TEXT DEFAULT 'In Progress',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(assigned_to) REFERENCES users(id),
+        FOREIGN KEY(assigned_by) REFERENCES users(id)
+      )
+    `);
+
+    // 6.5 Salary & Payroll
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS salary_structure(
+        user_id INTEGER PRIMARY KEY,
+        basic REAL DEFAULT 0,
+        hra REAL DEFAULT 0,
+        bonus REAL DEFAULT 0,
+        tax_percent REAL DEFAULT 0,
+        FOREIGN KEY(user_id) REFERENCES users(id)
+      )
+    `);
+
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS payroll(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        month TEXT NOT NULL,
+        working_days INTEGER DEFAULT 0,
+        present_days INTEGER DEFAULT 0,
+        leave_days INTEGER DEFAULT 0,
+        unpaid_days INTEGER DEFAULT 0,
+        gross_salary REAL DEFAULT 0,
+        deduction REAL DEFAULT 0,
+        tax REAL DEFAULT 0,
+        final_salary REAL DEFAULT 0,
+        generated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(user_id) REFERENCES users(id)
+      )
+    `);
+
+    // 7. Meetings & Collaboration
     await db.execute(`
       CREATE TABLE IF NOT EXISTS meetings(
         id TEXT PRIMARY KEY,
@@ -153,29 +235,36 @@ const initDb = async () => {
 
     // 7. Communication
     await db.execute(`
-      CREATE TABLE IF NOT EXISTS messages(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        sender_id INTEGER NOT NULL,
-        receiver_id INTEGER NOT NULL,
-        message TEXT NOT NULL,
-        file_url TEXT,
-        file_type TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY(sender_id) REFERENCES users(id),
-        FOREIGN KEY(receiver_id) REFERENCES users(id)
+      CREATE TABLE IF NOT EXISTS conversations (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          type TEXT NOT NULL,
+          name TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
     await db.execute(`
-      CREATE TABLE IF NOT EXISTS group_messages(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        group_id TEXT NOT NULL,
-        sender_id INTEGER NOT NULL,
-        message TEXT NOT NULL,
-        file_url TEXT,
-        file_type TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY(sender_id) REFERENCES users(id)
+      CREATE TABLE IF NOT EXISTS conversation_members (
+          conversation_id INTEGER NOT NULL,
+          user_id INTEGER NOT NULL,
+          joined_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (conversation_id, user_id),
+          FOREIGN KEY(conversation_id) REFERENCES conversations(id),
+          FOREIGN KEY(user_id) REFERENCES users(id)
+      )
+    `);
+
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS messages (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          conversation_id INTEGER NOT NULL,
+          sender_id INTEGER NOT NULL,
+          message TEXT NOT NULL,
+          file_url TEXT,
+          file_type TEXT,
+          timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY(conversation_id) REFERENCES conversations(id),
+          FOREIGN KEY(sender_id) REFERENCES users(id)
       )
     `);
 

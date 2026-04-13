@@ -9,7 +9,8 @@ import {
   Timer,
   TrendingUp,
   Loader2,
-  Calendar
+  Calendar,
+  AlertCircle
 } from 'lucide-react';
 
 const AttendancePage = () => {
@@ -39,8 +40,18 @@ const AttendancePage = () => {
         }
     };
 
+    const fetchStats = async () => {
+        try {
+            const { data } = await api.get('/holidays/stats');
+            setBalances(prev => ({ ...prev, workingDays: data.workingDays, presentDays: data.presentDays }));
+        } catch (error) {
+            console.error('Error fetching stats', error);
+        }
+    };
+
     useEffect(() => {
         fetchLogs();
+        fetchStats();
 
         const user = JSON.parse(localStorage.getItem('user') || '{}');
         const handleRemoteUpdate = (data) => {
@@ -59,9 +70,11 @@ const AttendancePage = () => {
     }, []);
 
     const getStatusStyle = (status) => {
-        if (status === 'Present') return 'bg-emerald-50 text-emerald-700 border-emerald-100';
-        if (status === 'Half Day') return 'bg-amber-50 text-amber-700 border-amber-100';
-        return 'bg-indigo-50 text-indigo-700 border-indigo-100 animate-pulse';
+        const s = status?.toLowerCase();
+        if (s === 'present') return 'bg-emerald-50 text-emerald-700 border-emerald-100';
+        if (s === 'half day') return 'bg-amber-50 text-amber-700 border-amber-100';
+        if (s === 'leave') return 'bg-indigo-50 text-indigo-700 border-indigo-100';
+        return 'bg-slate-50 text-slate-500 border-slate-200';
     };
 
     return (
@@ -91,7 +104,7 @@ const AttendancePage = () => {
             {/* Stats grid */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {[
-                    { label: 'Days Present', value: `${balances.present} / ${logs.length}`, color: 'text-indigo-600', icon: Calendar },
+                    { label: 'Days Present', value: `${balances.presentDays || 0} Present`, details: `out of ${balances.workingDays || 20} Working Days`, color: 'text-indigo-600', icon: Calendar },
                     { label: 'Total Hours', value: `${balances.totalHours} hrs`, color: 'text-emerald-600', icon: Clock },
                     { label: 'Average Sync', value: `${balances.avgHours} hrs`, color: 'text-amber-600', icon: Timer }
                 ].map((item, idx) => (
@@ -99,6 +112,7 @@ const AttendancePage = () => {
                         <div>
                             <p className="text-[11px] font-bold text-[#6b7280] uppercase tracking-wider mb-1">{item.label}</p>
                             <h3 className="text-2xl font-bold text-[#111827] tracking-tight">{item.value}</h3>
+                            {item.details && <p className="text-[11px] font-bold text-[#6b7280] uppercase mt-1">{item.details}</p>}
                         </div>
                         <div className={`w-12 h-12 bg-slate-50 rounded-xl flex items-center justify-center text-[#9ca3af] group-hover:bg-indigo-600 group-hover:text-white transition-all`}>
                             <item.icon size={24} />
@@ -107,7 +121,14 @@ const AttendancePage = () => {
                 ))}
             </div>
 
-            {/* Activity Table */}
+            {logs.length > 0 && logs.length < 15 && (
+                <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl flex items-center gap-4 text-amber-800 animate-pulse">
+                    <AlertCircle size={20} />
+                    <p className="text-xs font-bold uppercase tracking-widest">Warning: Gaps detected in your attendance ledger. Ensure all shifts are logged to avoid payroll deductions.</p>
+                </div>
+            )}
+
+            {/* Content Table */}
             <div className="bg-white rounded-[24px] border border-[#e5e7eb] shadow-sm overflow-hidden">
                 <div className="px-8 py-6 border-b border-[#f3f4f6]">
                     <h2 className="text-lg font-bold text-[#111827] tracking-tight">Shift Documentation</h2>
@@ -134,9 +155,15 @@ const AttendancePage = () => {
                             ) : logs.length > 0 ? logs.map((log, index) => (
                                 <tr key={log.id || index} className="hover:bg-[#fcfdfe] transition-colors">
                                     <td className="px-8 py-5 text-sm font-bold text-[#111827]">{log.date || 'N/A'}</td>
-                                    <td className="px-8 py-5 text-sm font-medium text-[#374151]">{log.clock_in ? new Date(log.clock_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--'}</td>
-                                    <td className="px-8 py-5 text-sm font-medium text-[#374151]">{log.clock_out ? new Date(log.clock_out).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--'}</td>
-                                    <td className="px-8 py-5 text-sm font-bold text-indigo-600">{log.total_hours || '0.00'} hrs</td>
+                                    <td className="px-8 py-5 text-sm font-medium text-[#374151]">
+                                        {log.clock_in && !isNaN(new Date(log.clock_in).getTime()) ? new Date(log.clock_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--'}
+                                    </td>
+                                    <td className="px-8 py-5 text-sm font-medium text-[#374151]">
+                                        {log.clock_out && !isNaN(new Date(log.clock_out).getTime()) ? new Date(log.clock_out).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--'}
+                                    </td>
+                                    <td className="px-8 py-5 text-sm font-bold text-indigo-600">
+                                        {log.status?.toLowerCase() === 'leave' ? '0.00' : (log.total_hours || '0.00')} hrs
+                                    </td>
                                     <td className="px-8 py-5 text-right">
                                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${getStatusStyle(log.status)}`}>
                                             {log.status || (log.clock_out ? 'Present' : 'Active')}

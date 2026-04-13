@@ -5,5 +5,6 @@ const { protect, authorize } = require('../middleware/auth.middleware');
 
 router.get('/team', protect, authorize(['manager', 'admin']), managerController.getTeamMembers);
 router.get('/leaves', protect, authorize(['manager', 'admin']), managerController.getPendingLeaves);
+router.get('/stats', protect, authorize(['manager', 'admin']), managerController.getManagerStats);
 
 module.exports = router;

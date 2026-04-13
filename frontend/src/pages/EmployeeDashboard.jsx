@@ -75,6 +75,7 @@ const EmployeeDashboard = () => {
     const [latestPayslip, setLatestPayslip] = useState(null);
     const [taxStatus, setTaxStatus] = useState('Not Submitted');
     const [benefitsCount, setBenefitsCount] = useState(0);
+    const [attendanceStats, setAttendanceStats] = useState({ workingDays: 20, presentDays: 0 });
 
     const fetchData = async () => {
         if (!loading) setLoading(true);
@@ -99,6 +100,13 @@ const EmployeeDashboard = () => {
             if (payrollRes.data?.length > 0) setLatestPayslip(payrollRes.data[0]);
             if (taxRes.data?.length > 0) setTaxStatus(taxRes.data[0].status);
             setBenefitsCount(benefitsRes.data?.length || 0);
+
+            try {
+                const hStats = await api.get('/holidays/stats');
+                setAttendanceStats(hStats.data || { workingDays: 20, presentDays: 0 });
+            } catch (e) {
+                console.error(e);
+            }
             
             const pData = prodRes.data || {};
             const totalWork = pData.totalWorkTime || 0;
@@ -312,11 +320,11 @@ const EmployeeDashboard = () => {
                 <StatCard 
                     icon={CalendarDays} 
                     label="Current Month Attendance" 
-                    value={`${workLogs?.filter(l => l.clock_out)?.length || 0} Present`} 
+                    value={`${attendanceStats.presentDays} Present`} 
                     color="text-emerald-600"
                     bgColor="bg-emerald-50"
                     onClick={() => navigate('/attendance')}
-                    trend={`out of ${new Date().getDate()} Working Days`}
+                    trend={`out of ${attendanceStats.workingDays} Working Days`}
                 />
                 <StatCard 
                     icon={Timer} 
@@ -400,7 +408,9 @@ const EmployeeDashboard = () => {
                             ) : status.completed ? (
                                 <div className="w-full text-center bg-emerald-50 border border-emerald-100 p-6 rounded-[24px]">
                                     <h3 className="text-xl font-black text-emerald-600 mb-2 flex items-center justify-center gap-2"><CheckCircle2 size={24} /> Shift Completed</h3>
-                                    <p className="text-sm font-bold text-emerald-700/70">Logged {new Date(status.startTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} - {new Date(status.endTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
+                                    <p className="text-sm font-bold text-emerald-700/70">
+                                        Logged {status.startTime && !isNaN(new Date(status.startTime).getTime()) ? new Date(status.startTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--:--'} - {status.endTime && !isNaN(new Date(status.endTime).getTime()) ? new Date(status.endTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--:--'}
+                                    </p>
                                 </div>
                             ) : (
                                 <>
@@ -650,14 +660,18 @@ const EmployeeDashboard = () => {
                                     <td className="px-8 py-5">
                                         <div className="flex items-center gap-2">
                                             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                                            <span className="text-sm font-black text-slate-900">{log.clock_in}</span>
+                                            <span className="text-sm font-black text-slate-900">
+                                                {log.clock_in && !isNaN(new Date(log.clock_in).getTime()) ? new Date(log.clock_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--'}
+                                            </span>
                                         </div>
                                     </td>
                                     <td className="px-8 py-5">
                                         {log.clock_out ? (
                                             <div className="flex items-center gap-2">
                                                 <div className="w-1.5 h-1.5 rounded-full bg-rose-500" />
-                                                <span className="text-sm font-black text-slate-900">{log.clock_out}</span>
+                                                <span className="text-sm font-black text-slate-900">
+                                                    {log.clock_out && !isNaN(new Date(log.clock_out).getTime()) ? new Date(log.clock_out).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--'}
+                                                </span>
                                             </div>
                                         ) : (
                                             <span className="px-3 py-1 bg-amber-50 text-amber-600 rounded-lg text-[10px] font-black uppercase tracking-widest">In Progress</span>

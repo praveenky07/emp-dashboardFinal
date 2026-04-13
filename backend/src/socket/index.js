@@ -29,12 +29,12 @@ const initSocket = (server) => {
             console.log(`[SOCKET] Socket ${socket.id} joined room ${room}`);
         });
 
-        socket.on("private_message", async ({ senderId, receiverId, message, file_url, file_type, senderName }) => {
+        socket.on("private_message", async ({ senderId, conversationId, receiverId, message, file_url, file_type, senderName }) => {
             try {
                 const { db } = require('../db/db');
                 await db.execute({
-                    sql: 'INSERT INTO messages (sender_id, receiver_id, message, file_url, file_type) VALUES (?, ?, ?, ?, ?)',
-                    args: [senderId, receiverId, message || '', file_url || null, file_type || null]
+                    sql: 'INSERT INTO messages (conversation_id, sender_id, message, file_url, file_type) VALUES (?, ?, ?, ?, ?)',
+                    args: [conversationId, senderId, message || '', file_url || null, file_type || null]
                 });
 
                 // Create notification for receiver
@@ -45,7 +45,7 @@ const initSocket = (server) => {
 
                 const receiverSocketId = onlineUsers.get(String(receiverId));
                 if (receiverSocketId) {
-                    io.to(receiverSocketId).emit("private_message", { senderId, message, file_url, file_type, senderName });
+                    io.to(receiverSocketId).emit("new_message", { conversationId, senderId, message, file_url, file_type, senderName, timestamp: new Date().toISOString() });
                     io.to(receiverSocketId).emit("new_notification", {
                         type: 'message',
                         message: `${senderName || 'Someone'} sent you a message`,
@@ -55,14 +55,14 @@ const initSocket = (server) => {
             } catch (err) { console.error('Socket private message error:', err); }
         });
 
-        socket.on("group_message", async ({ senderId, groupId, message, senderName, file_url, file_type }) => {
+        socket.on("group_message", async ({ senderId, conversationId, message, senderName, file_url, file_type }) => {
             try {
                 const { db } = require('../db/db');
                 await db.execute({
-                    sql: 'INSERT INTO group_messages (group_id, sender_id, message, file_url, file_type) VALUES (?, ?, ?, ?, ?)',
-                    args: [groupId, senderId, message || '', file_url || null, file_type || null]
+                    sql: 'INSERT INTO messages (conversation_id, sender_id, message, file_url, file_type) VALUES (?, ?, ?, ?, ?)',
+                    args: [conversationId, senderId, message || '', file_url || null, file_type || null]
                 });
-                io.to(groupId).emit("group_message", { senderId, groupId, message, senderName, file_url, file_type });
+                io.to(`conversation_${conversationId}`).emit("new_message", { conversationId, senderId, message, senderName, file_url, file_type, timestamp: new Date().toISOString() });
             } catch (err) { console.error('Socket group message error:', err); }
         });
 

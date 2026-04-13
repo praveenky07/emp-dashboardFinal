@@ -1,5 +1,23 @@
 const { db } = require('../db/db');
 
+exports.getUsers = async (req, res) => {
+    const { role } = req.query;
+    try {
+        let sql = 'SELECT id, name, email, role, profile_image FROM users';
+        let args = [];
+        if (role) {
+            sql += ' WHERE LOWER(role) = ?';
+            args.push(role.toLowerCase());
+        }
+        sql += ' ORDER BY name ASC';
+        
+        const result = await db.execute({ sql, args });
+        res.json(result.rows);
+    } catch (error) {
+        res.status(500).json({ error: 'Server error, try again. ' + error.message });
+    }
+};
+
 exports.getAvailableUsers = async (req, res) => {
     const userId = req.user.id;
     const role = (req.user.role || 'employee').toLowerCase();
